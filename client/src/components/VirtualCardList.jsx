@@ -1,5 +1,7 @@
     import { FixedSizeList as List } from 'react-window';
-import AutoSizer from 'react-virtualized-auto-sizer';
+// import AutoSizer from 'react-virtualized-auto-sizer';
+import * as AutoSizerPkg from 'react-virtualized-auto-sizer';
+const AutoSizer = AutoSizerPkg.default || AutoSizerPkg;
 import { Edit2, Trash2 } from 'lucide-react';
 
 // This component takes the FULL list of cards but only renders what fits on screen
