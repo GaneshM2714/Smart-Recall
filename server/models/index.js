@@ -8,11 +8,18 @@ const sequelize = new Sequelize(
   process.env.DB_PASS,
   {
     host: process.env.DB_HOST,
+    port: process.env.DB_PORT || 3306, // Ensure port is read
     dialect: "mysql",
     logging: false,
+    dialectOptions: {
+      // THIS IS THE CRITICAL FIX FOR AIVEN / CLOUD DBs
+      ssl: process.env.DB_HOST === 'localhost' ? false : {
+        require: true,
+        rejectUnauthorized: false // Required for many free-tier cloud databases
+      }
+    }
   }
 );
-
 // 2. Define Models
 
 // --- USER ---
