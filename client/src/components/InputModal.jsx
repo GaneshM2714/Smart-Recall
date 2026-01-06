@@ -1,44 +1,67 @@
 import { X } from 'lucide-react';
+import { useState, useEffect } from 'react';
 
 function InputModal({ isOpen, onClose, onSubmit, title, placeholder }) {
+  const [value, setValue] = useState('');
+
+  // Reset value when modal opens
+  useEffect(() => {
+    if (isOpen) setValue('');
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    const value = e.target.elements.inputValue.value;
-    if (value.trim()) {
-      onSubmit(value);
-      onClose();
-    }
-  };
-
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white p-6 rounded-lg shadow-xl w-96 animate-fade-in">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold text-gray-800">{title}</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-red-500">
-            <X size={20} />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fade-in">
+      <div className="bg-white dark:bg-gray-800 w-full max-w-md rounded-xl shadow-2xl p-6 m-4 animate-scale-in border border-gray-200 dark:border-gray-700">
+        
+        {/* Header */}
+        <div className="flex justify-between items-center mb-6">
+          <h3 className="text-xl font-bold text-gray-900 dark:text-white">{title}</h3>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition">
+            <X size={20} className="text-gray-500" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit}>
+        {/* Input - THE FIX IS HERE */}
+        <div className="space-y-4">
           <input
-            name="inputValue"
             autoFocus
-            defaultValue={placeholder} // <--- ADD THIS so the old name appears
-            className="w-full p-2 border border-gray-300 rounded mb-4 focus:ring-2 focus:ring-blue-500 outline-none"
-          // remove placeholder prop if you want, or keep it.
+            type="text"
+            className="w-full p-3 rounded-lg border border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-indigo-500 outline-none transition-all
+            bg-white text-gray-900 placeholder-gray-400" 
+            /* ^^^ FIXED: bg-white + text-gray-900 ensures black text on white background always */
+            placeholder={placeholder}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && value.trim()) {
+                onSubmit(value);
+                onClose();
+              }
+            }}
           />
-          <div className="flex justify-end gap-2">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">
+
+          <div className="flex justify-end gap-3 pt-2">
+            <button 
+              onClick={onClose}
+              className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg font-medium transition"
+            >
               Cancel
             </button>
-            <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
-              Create
+            <button
+              disabled={!value.trim()}
+              onClick={() => {
+                onSubmit(value);
+                onClose();
+              }}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg shadow-indigo-200 dark:shadow-none"
+            >
+              Confirm
             </button>
           </div>
-        </form>
+        </div>
+
       </div>
     </div>
   );
