@@ -36,6 +36,10 @@ app.get("/api/status", async (req, res) => {
   }
 });
 
+app.get('/api/health', (req, res) => {
+  res.status(200).send('OK');
+});
+
 const authRoutes = require("./routes/authRoutes"); // <--- Import
 app.use("/api/auth", authRoutes);                  // <--- Use
 const contentRoutes = require("./routes/contentRoutes"); // <--- Import
