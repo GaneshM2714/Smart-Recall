@@ -113,6 +113,47 @@ app.get('/api/check-schema', async (req, res) => {
   }
 });
 
+app.get('/api/debug-data', async (req, res) => {
+  try {
+    const { User, Subject, Topic, Card } = require('./models');
+    const userId = req.user.id; // Ensure you are logged in when hitting this!
+
+    // 1. Check User
+    const user = await User.findByPk(userId);
+    
+    // 2. Check Subjects
+    const subjects = await Subject.findAll({ where: { user_id: userId } });
+    const subjectIds = subjects.map(s => s.id);
+
+    // 3. Check Topics (orphaned vs linked)
+    const topics = await Topic.findAll({ where: { subject_id: subjectIds } });
+    const topicIds = topics.map(t => t.id);
+
+    // 4. Check Cards (The moment of truth)
+    // Count ALL cards in the system
+    const totalCardsInDb = await Card.count();
+    // Count cards that actually belong to your topics
+    const myCards = await Card.findAll({ where: { topic_id: topicIds } });
+
+    // 5. Check for "Orphans" (Cards with no Topic ID)
+    const orphanedCards = await Card.count({ where: { topic_id: null } });
+
+    res.json({
+      debug_user: { id: userId, email: user?.email },
+      step_1_subjects: { count: subjects.length, ids: subjectIds },
+      step_2_topics: { count: topics.length, ids: topicIds },
+      step_3_cards: { 
+        total_in_db: totalCardsInDb, 
+        linked_to_me: myCards.length,
+        orphaned_null_topic: orphanedCards
+      }
+    });
+
+  } catch (error) {
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
 const authRoutes = require("./routes/authRoutes"); // <--- Import
 app.use("/api/auth", authRoutes);                  // <--- Use
 const contentRoutes = require("./routes/contentRoutes"); // <--- Import
