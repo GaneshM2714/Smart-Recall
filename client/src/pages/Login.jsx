@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react'; // <--- 1. Import useEffect
 import API from "../api";
 import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { BookOpen } from 'lucide-react';
-import { GoogleLogin } from '@react-oauth/google'; // <--- 1. Import Google Component
+import { GoogleLogin } from '@react-oauth/google'; 
 import Card from '../components/ui/Card';
 import PasswordInput from '../components/PasswordInput';
 
@@ -12,6 +12,15 @@ function Login() {
   const [password, setPassword] = useState('');
   const navigate = useNavigate();
 
+  // --- FIX: REDIRECT IF ALREADY LOGGED IN ---
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      // 'replace: true' destroys the history entry, so you can't click Back to get here
+      navigate('/dashboard', { replace: true });
+    }
+  }, [navigate]);
+
   // --- STANDARD LOGIN ---
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -19,7 +28,9 @@ function Login() {
       const { data } = await API.post('/auth/login', { email, password });
       localStorage.setItem('token', data.token);
       toast.success('Welcome back!');
-      navigate('/dashboard');
+      
+      // Use replace here too for good measure
+      navigate('/dashboard', { replace: true }); 
     } catch (error) {
       toast.error(error.response?.data?.error || 'Login failed');
     }
@@ -28,15 +39,15 @@ function Login() {
   // --- GOOGLE LOGIN HANDLER ---
   const handleGoogleSuccess = async (credentialResponse) => {
     try {
-      // Send the token received from Google to your backend
       const { data } = await API.post('/auth/google', {
         token: credentialResponse.credential
       });
 
-      // Same success logic as standard login
       localStorage.setItem('token', data.token);
       toast.success('Google Login Successful! 🎉');
-      navigate('/dashboard');
+      
+      // Use replace here too
+      navigate('/dashboard', { replace: true });
 
     } catch (error) {
       console.error("Google Backend Error", error);
@@ -55,7 +66,6 @@ function Login() {
       </div>
 
       <Card className="w-full max-w-md p-8">
-        {/* Standard Form */}
         <form onSubmit={handleLogin}>
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email Address</label>
@@ -91,14 +101,12 @@ function Login() {
           </button>
         </form>
 
-        {/* --- DIVIDER --- */}
         <div className="my-6 flex items-center">
           <div className="flex-grow border-t border-gray-300 dark:border-gray-600"></div>
           <span className="mx-4 text-gray-400 text-sm font-medium">OR</span>
           <div className="flex-grow border-t border-gray-300 dark:border-gray-600"></div>
         </div>
 
-        {/* --- GOOGLE BUTTON --- */}
         <div className="flex justify-center w-full">
           <GoogleLogin
             onSuccess={handleGoogleSuccess}
@@ -108,8 +116,8 @@ function Login() {
             }}
             useOneTap
             shape="rectangular"
-            theme="filled_blue" // Options: 'outline' | 'filled_blue' | 'filled_black'
-            width="100%" // Tries to match container width
+            theme="filled_blue"
+            width="100%" 
           />
         </div>
 

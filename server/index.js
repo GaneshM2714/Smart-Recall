@@ -68,6 +68,20 @@ app.get('/api/debug-public', async (req, res) => {
   }
 });
 
+// --- TEMPORARY FIX ROUTE (Delete this after running once) ---
+app.get('/api/fix-db-avatar', async (req, res) => {
+  try {
+    const { sequelize } = require('./models');
+    
+    // This command speaks directly to your Aiven database
+    await sequelize.query("ALTER TABLE Users ADD COLUMN avatar VARCHAR(255) NULL;");
+    
+    res.send("✅ Success! The 'avatar' column was added to your Aiven database.");
+  } catch (error) {
+    res.send("❌ Error (or column already exists): " + error.message);
+  }
+});
+
 // --- STARTUP ---
 // REMOVED { alter: true } to stop the duplicate index errors
 sequelize.sync().then(() => {

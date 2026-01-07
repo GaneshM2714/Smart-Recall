@@ -35,7 +35,8 @@ exports.register = async (req, res) => {
     // Create User
     await User.create({
       email,
-      password_hash: hashedPassword
+      password_hash: hashedPassword,
+      auth_provider: 'email'
     });
 
     res.status(201).json({ message: "User registered successfully!" });
@@ -58,7 +59,7 @@ exports.login = async (req, res) => {
     if (!isMatch) return res.status(400).json({ error: "Invalid credentials" });
 
     // Generate Token
-    const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: "7d" });
+    const token = jwt.sign({ id: user.id, email: user.email,provider: user.auth_provider || 'email' }, JWT_SECRET, { expiresIn: "7d" });
 
     res.json({ token, user: { id: user.id, email: user.email } });
   } catch (error) {
@@ -221,6 +222,7 @@ exports.googleLogin = async (req, res) => {
       user = await User.create({
         email,
         password_hash: hashedPassword, 
+        auth_provider: 'google'
         // If you had a 'name' or 'avatar' column, you could add payload.name here
       });
     }
@@ -228,8 +230,8 @@ exports.googleLogin = async (req, res) => {
     // 4. Generate OUR App Token (JWT)
     // This is the same token used in your normal login
     const appToken = jwt.sign(
-        { id: user.id, email: user.email }, 
-        JWT_SECRET, 
+        { id: user.id, email: user.email , provider: user.auth_provider || 'email'}, 
+        JWT_SECRET,
         { expiresIn: "7d" }
     );
 
@@ -238,5 +240,27 @@ exports.googleLogin = async (req, res) => {
   } catch (error) {
     console.error("Google Login Error:", error);
     res.status(401).json({ error: "Google authentication failed" });
+  }
+};
+
+//8. Upload Avatar
+exports.uploadAvatar = async (req, res) => {
+  try {
+    // Multer (cloudinary storage) puts the file info in req.file
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    // Cloudinary returns the secure URL in 'path'
+    const avatarUrl = req.file.path; 
+
+    // Update the User record in DB
+    // req.user.id comes from the authMiddleware
+    await User.update({ avatar: avatarUrl }, { where: { id: req.user.id } });
+
+    res.json({ message: "Avatar updated successfully", avatar: avatarUrl });
+  } catch (error) {
+    console.error("Upload Error:", error);
+    res.status(500).json({ error: "Image upload failed" });
   }
 };

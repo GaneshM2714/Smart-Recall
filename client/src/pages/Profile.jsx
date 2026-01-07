@@ -1,33 +1,43 @@
-import { useState, useEffect } from 'react';
-import { User, Mail, Shield, AlertTriangle, Save, X, Trash2 } from 'lucide-react'; // Added Trash2
+import { useState, useEffect, useRef } from 'react';
+import { User, Mail, Shield, AlertTriangle, Save, Trash2, Moon, Sun, Camera, Loader } from 'lucide-react';
 import { jwtDecode } from 'jwt-decode';
 import toast from 'react-hot-toast';
 import { useTheme } from '../context/ThemeContext';
-import { Moon, Sun } from 'lucide-react';
 import API from '../api';
-import { useNavigate } from 'react-router-dom'; // Import useNavigate
+import { useNavigate } from 'react-router-dom';
 
 function Profile() {
-  const [user, setUser] = useState({ email: 'Loading...', id: '' });
+  // Added 'provider' to initial state
+  const [user, setUser] = useState({ email: 'Loading...', id: '', avatar: null, provider: 'email' });
   const [memberSince, setMemberSince] = useState('Recently');
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
+
+  // --- Upload State ---
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef(null);
 
   // --- Password State ---
   const [isEditingPassword, setIsEditingPassword] = useState(false);
   const [passwords, setPasswords] = useState({ current: '', new: '', confirm: '' });
 
-  // --- NEW: Delete Modal State ---
+  // --- Delete Modal State ---
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteInput, setDeleteInput] = useState('');
 
-  // ... (Keep your existing useEffect for loading user data) ...
+  // 1. Load User Data & Provider
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (token) {
       try {
         const decoded = jwtDecode(token);
-        setUser({ email: decoded.email, id: decoded.id });
+        setUser({ 
+            email: decoded.email, 
+            id: decoded.id, 
+            avatar: decoded.avatar || null,
+            provider: decoded.provider || 'email' // <--- CAPTURE PROVIDER HERE
+        });
+        
         if (decoded.iat) {
             const date = new Date(decoded.iat * 1000);
             setMemberSince(date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }));
@@ -36,7 +46,39 @@ function Profile() {
     }
   }, []);
 
-  // ... (Keep your existing handleSavePassword function) ...
+  // 2. Handle Image Upload
+  const handleImageClick = () => {
+    fileInputRef.current.click();
+  };
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) { 
+      toast.error("File is too large (Max 5MB)");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('avatar', file);
+
+    setUploading(true);
+    try {
+      const { data } = await API.post('/auth/avatar', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setUser(prev => ({ ...prev, avatar: data.avatar }));
+      toast.success("Profile picture updated!");
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to upload image");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // 3. Handle Password Change
   const handleSavePassword = async (e) => {
     e.preventDefault();
     if (!passwords.current || !passwords.new) return toast.error("Please fill all fields");
@@ -56,42 +98,61 @@ function Profile() {
     }
   };
 
-  // --- NEW: Handle Account Deletion ---
+  // 4. Handle Account Deletion
   const handleConfirmDelete = async () => {
-    if (deleteInput !== 'DELETE') return; // Safety check
+    if (deleteInput !== 'DELETE') return;
 
     try {
       await API.delete('/auth/delete-account');
-      
-      // Cleanup
       localStorage.removeItem('token');
       toast.success("Account deleted. Goodbye!");
-      
-      // Redirect
       navigate('/login');
     } catch (error) {
       toast.error(error.response?.data?.error || "Failed to delete account");
-      setIsDeleteModalOpen(false); // Close modal on error
+      setIsDeleteModalOpen(false);
     }
   };
 
   return (
-    <div className="max-w-2xl mx-auto animate-fade-in relative"> 
-      {/* ^ Added 'relative' just in case */}
-
+    <div className="max-w-2xl mx-auto animate-fade-in relative pb-10"> 
       <h1 className="text-2xl font-bold text-gray-800 dark:text-white mb-6">Account Settings</h1>
 
-      {/* ... (Your existing Profile Card & Password UI remains exactly the same) ... */}
+      {/* --- PROFILE CARD --- */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden mb-8 transition-colors">
-         {/* ... (Same as before) ... */}
-         {/* ... Include the Password Form here ... */}
-          <div className="bg-indigo-50 dark:bg-indigo-900/20 p-6 border-b border-indigo-100 dark:border-indigo-800 flex items-center gap-4">
-            <div className="bg-indigo-100 dark:bg-indigo-800 p-4 rounded-full text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-700">
-                <User size={32} />
+        
+        {/* Header Section */}
+        <div className="bg-indigo-50 dark:bg-indigo-900/20 p-6 border-b border-indigo-100 dark:border-indigo-800 flex items-center gap-6">
+            <div className="relative group shrink-0">
+                <div 
+                    onClick={handleImageClick}
+                    className="w-20 h-20 rounded-full border-4 border-white dark:border-gray-700 shadow-md overflow-hidden cursor-pointer bg-indigo-100 dark:bg-indigo-800 flex items-center justify-center relative"
+                >
+                    {uploading && (
+                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-10">
+                            <Loader className="animate-spin text-white" size={20} />
+                        </div>
+                    )}
+                    {user.avatar ? (
+                        <img src={user.avatar} alt="Profile" className="w-full h-full object-cover" />
+                    ) : (
+                        <User size={32} className="text-indigo-600 dark:text-indigo-300" />
+                    )}
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-center justify-center">
+                        <Camera className="text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-md" size={24} />
+                    </div>
+                </div>
+                <input 
+                    type="file" 
+                    ref={fileInputRef} 
+                    onChange={handleFileChange} 
+                    className="hidden" 
+                    accept="image/*"
+                />
             </div>
+
             <div>
-                <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">My Account</h2>
-                <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 text-sm">
+                <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">My Account</h2>
+                <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 text-sm mt-1">
                     <span className="bg-indigo-200 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200 text-xs px-2 py-0.5 rounded-full font-bold">PRO</span>
                     <span>Member since {memberSince}</span>
                 </div>
@@ -105,84 +166,106 @@ function Profile() {
                     <Mail size={18} />
                     <span>Email Address</span>
                 </div>
-                <span className="font-medium text-gray-800 dark:text-gray-200 font-mono bg-gray-50 dark:bg-gray-700 px-2 py-1 rounded">
-                    {user.email}
-                </span>
+                <div className="flex items-center gap-2">
+                    {user.provider === 'google' && (
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg" alt="Google" className="w-4 h-4" />
+                    )}
+                    <span className="font-medium text-gray-800 dark:text-gray-200 font-mono bg-gray-50 dark:bg-gray-700 px-2 py-1 rounded">
+                        {user.email}
+                    </span>
+                </div>
             </div>
 
-            {/* Password Logic & UI */}
-            <div className="border-b border-gray-100 dark:border-gray-700 pb-4">
-                <div className="flex items-center justify-between py-2">
+            {/* --- PASSWORD SECTION (CONDITIONAL) --- */}
+            
+            {/* A. If Google User: Show "Managed by Google" */}
+            {user.provider === 'google' && (
+                 <div className="flex items-center justify-between py-4 border-b border-gray-100 dark:border-gray-700">
                     <div className="flex items-center gap-3 text-gray-600 dark:text-gray-400">
                         <Shield size={18} />
                         <span>Password</span>
                     </div>
-                    {!isEditingPassword && (
-                        <button 
-                            className="text-sm text-blue-600 dark:text-blue-400 hover:underline font-medium" 
-                            onClick={() => setIsEditingPassword(true)}
-                        >
-                            Change Password
-                        </button>
+                    <span className="text-xs bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 px-3 py-1 rounded-full font-medium border border-blue-100 dark:border-blue-800 flex items-center gap-2">
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg" alt="Google" className="w-3 h-3" />
+                        Managed by Google
+                    </span>
+                </div>
+            )}
+
+            {/* B. If Email User: Show Change Password Form */}
+            {user.provider !== 'google' && (
+                <div className="border-b border-gray-100 dark:border-gray-700 pb-4">
+                    <div className="flex items-center justify-between py-2">
+                        <div className="flex items-center gap-3 text-gray-600 dark:text-gray-400">
+                            <Shield size={18} />
+                            <span>Password</span>
+                        </div>
+                        {!isEditingPassword && (
+                            <button 
+                                className="text-sm text-blue-600 dark:text-blue-400 hover:underline font-medium" 
+                                onClick={() => setIsEditingPassword(true)}
+                            >
+                                Change Password
+                            </button>
+                        )}
+                    </div>
+
+                    {isEditingPassword && (
+                        <form onSubmit={handleSavePassword} className="mt-4 bg-gray-50 dark:bg-gray-900/50 p-4 rounded-xl border border-gray-200 dark:border-gray-700 space-y-4 animate-fade-in-down">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Current Password</label>
+                                <input 
+                                    type="password" 
+                                    className="w-full p-2 rounded border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                    placeholder="Enter current password"
+                                    value={passwords.current}
+                                    onChange={e => setPasswords({...passwords, current: e.target.value})}
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">New Password</label>
+                                    <input 
+                                        type="password" 
+                                        className="w-full p-2 rounded border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                        placeholder="Min 6 chars"
+                                        value={passwords.new}
+                                        onChange={e => setPasswords({...passwords, new: e.target.value})}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Confirm</label>
+                                    <input 
+                                        type="password" 
+                                        className="w-full p-2 rounded border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                        placeholder="Repeat new password"
+                                        value={passwords.confirm}
+                                        onChange={e => setPasswords({...passwords, confirm: e.target.value})}
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex justify-end gap-2 pt-2">
+                                <button 
+                                    type="button"
+                                    onClick={() => {
+                                        setIsEditingPassword(false);
+                                        setPasswords({ current: '', new: '', confirm: '' });
+                                    }}
+                                    className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-200 dark:text-gray-300 dark:hover:bg-gray-700 rounded transition"
+                                >
+                                    Cancel
+                                </button>
+                                <button 
+                                    type="submit"
+                                    className="px-3 py-1.5 text-sm bg-indigo-600 text-white hover:bg-indigo-700 rounded transition flex items-center gap-2"
+                                >
+                                    <Save size={14} /> Update Password
+                                </button>
+                            </div>
+                        </form>
                     )}
                 </div>
-
-                {/* EXPANDABLE PASSWORD FORM */}
-                {isEditingPassword && (
-                    <form onSubmit={handleSavePassword} className="mt-4 bg-gray-50 dark:bg-gray-900/50 p-4 rounded-xl border border-gray-200 dark:border-gray-700 space-y-4 animate-fade-in-down">
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Current Password</label>
-                            <input 
-                                type="password" 
-                                className="w-full p-2 rounded border dark:bg-gray-800 dark:border-gray-600 dark:text-white text-sm"
-                                placeholder="Enter current password"
-                                value={passwords.current}
-                                onChange={e => setPasswords({...passwords, current: e.target.value})}
-                            />
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">New Password</label>
-                                <input 
-                                    type="password" 
-                                    className="w-full p-2 rounded border dark:bg-gray-800 dark:border-gray-600 dark:text-white text-sm"
-                                    placeholder="Min 6 chars"
-                                    value={passwords.new}
-                                    onChange={e => setPasswords({...passwords, new: e.target.value})}
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Confirm</label>
-                                <input 
-                                    type="password" 
-                                    className="w-full p-2 rounded border dark:bg-gray-800 dark:border-gray-600 dark:text-white text-sm"
-                                    placeholder="Repeat new password"
-                                    value={passwords.confirm}
-                                    onChange={e => setPasswords({...passwords, confirm: e.target.value})}
-                                />
-                            </div>
-                        </div>
-                        <div className="flex justify-end gap-2 pt-2">
-                            <button 
-                                type="button"
-                                onClick={() => {
-                                    setIsEditingPassword(false);
-                                    setPasswords({ current: '', new: '', confirm: '' });
-                                }}
-                                className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-200 dark:text-gray-300 dark:hover:bg-gray-700 rounded transition"
-                            >
-                                Cancel
-                            </button>
-                            <button 
-                                type="submit"
-                                className="px-3 py-1.5 text-sm bg-indigo-600 text-white hover:bg-indigo-700 rounded transition flex items-center gap-2"
-                            >
-                                <Save size={14} /> Update Password
-                            </button>
-                        </div>
-                    </form>
-                )}
-            </div>
+            )}
 
             {/* ID Row */}
             <div className="flex items-center justify-between py-2">
@@ -195,7 +278,7 @@ function Profile() {
         </div>
       </div>
 
-      {/* Preferences Section (Same as before) */}
+      {/* Preferences Section */}
       <h2 className="text-lg font-bold text-gray-800 dark:text-white mb-4">App Preferences</h2>
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-8 transition-colors">
           <div className="flex items-center justify-between">
@@ -215,7 +298,7 @@ function Profile() {
           </div>
       </div>
 
-      {/* 3. Danger Zone (Trigger) */}
+      {/* Danger Zone */}
       <div className="border border-red-200 dark:border-red-800 rounded-xl bg-red-50 dark:bg-red-900/10 p-6 transition-colors">
           <h3 className="text-red-800 dark:text-red-400 font-bold flex items-center gap-2 mb-2">
               <AlertTriangle size={18} /> Danger Zone
@@ -225,8 +308,8 @@ function Profile() {
           </p>
           <button 
             onClick={() => {
-              setDeleteInput(''); // Reset input
-              setIsDeleteModalOpen(true); // Open the Custom Modal
+              setDeleteInput(''); 
+              setIsDeleteModalOpen(true); 
             }}
             className="bg-white dark:bg-red-900/20 border border-red-300 dark:border-red-700 text-red-600 dark:text-red-300 px-4 py-2 rounded text-sm font-medium hover:bg-red-600 hover:text-white transition"
           >
@@ -234,12 +317,10 @@ function Profile() {
           </button>
       </div>
 
-      {/* --- 4. CUSTOM DELETE MODAL --- */}
+      {/* Custom Delete Modal */}
       {isDeleteModalOpen && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
           <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-red-100 dark:border-red-900 animate-scale-in">
-            
-            {/* Header */}
             <div className="bg-red-50 dark:bg-red-900/30 p-6 flex items-start gap-4">
               <div className="bg-red-100 dark:bg-red-800 p-3 rounded-full shrink-0">
                 <AlertTriangle className="text-red-600 dark:text-red-300" size={24} />
@@ -251,8 +332,6 @@ function Profile() {
                 </p>
               </div>
             </div>
-
-            {/* Input Section */}
             <div className="p-6">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 To confirm, type <span className="font-mono font-bold select-all">DELETE</span> below:
@@ -265,8 +344,6 @@ function Profile() {
                 className="w-full p-3 border border-gray-300 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-red-500 outline-none transition-all font-mono"
               />
             </div>
-
-            {/* Footer Actions */}
             <div className="p-6 bg-gray-50 dark:bg-gray-800/50 flex justify-end gap-3 border-t border-gray-100 dark:border-gray-800">
               <button 
                 onClick={() => setIsDeleteModalOpen(false)}
@@ -274,7 +351,6 @@ function Profile() {
               >
                 Cancel
               </button>
-              
               <button 
                 onClick={handleConfirmDelete}
                 disabled={deleteInput !== 'DELETE'}
@@ -288,11 +364,9 @@ function Profile() {
                 Confirm Deletion
               </button>
             </div>
-
           </div>
         </div>
       )}
-
     </div>
   );
 }

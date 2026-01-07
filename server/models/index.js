@@ -27,11 +27,19 @@ const User = sequelize.define("User", {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
   email: { type: DataTypes.STRING, allowNull: false, unique: true },
   password_hash: { type: DataTypes.STRING, allowNull: true }, // Allow null for Google users
-  
-  // NEW: Fields for Reset Flow & Google
+  avatar: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+
+
+  // NEW: Fields for Reset Flow & Google  
   reset_password_token: { type: DataTypes.STRING, allowNull: true },
   reset_password_expires: { type: DataTypes.DATE, allowNull: true },
-  auth_provider: { type: DataTypes.STRING, defaultValue: 'local' }, // 'local' or 'google'
+  auth_provider: {
+    type: DataTypes.STRING,
+    defaultValue: 'email'
+  },
   google_id: { type: DataTypes.STRING, allowNull: true }
 });
 
@@ -60,7 +68,7 @@ const Card = sequelize.define("Card", {
   front: { type: DataTypes.TEXT, allowNull: false },
   back: { type: DataTypes.TEXT, allowNull: false },
   card_type: { type: DataTypes.ENUM('BASIC', 'IMAGE', 'CODE'), defaultValue: 'BASIC' },
-  
+
   // FSRS Algorithm Fields
   next_review: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
   stability: { type: DataTypes.FLOAT, defaultValue: 0 },
@@ -73,7 +81,7 @@ const Card = sequelize.define("Card", {
     // 1. Speeds up finding cards due for review (The most critical query)
     {
       name: 'cards_next_review_idx',
-      fields: ['next_review'] 
+      fields: ['next_review']
     },
     // 2. Speeds up filtering cards by Topic (The Subject/Browser View)
     // Note: 'topic_id' is added automatically by the relationship below, but we can still index it here.
@@ -83,6 +91,7 @@ const Card = sequelize.define("Card", {
     }
   ]
 });
+
 
 // --- REVIEW LOG ---
 const ReviewLog = sequelize.define("ReviewLog", {
