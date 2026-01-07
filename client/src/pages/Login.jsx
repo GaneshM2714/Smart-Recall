@@ -4,6 +4,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { BookOpen } from 'lucide-react';
 import Card from '../components/ui/Card'; // Consistent UI
+import PasswordInput from '../components/PasswordInput';
 
 function Login() {
   const [email, setEmail] = useState('');
@@ -50,13 +51,10 @@ function Login() {
 
           <div className="mb-6">
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Password</label>
-            <input
-              className="w-full p-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-colors"
-              type="password"
-              placeholder="••••••••"
+            <PasswordInput 
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              required
+              placeholder="Choose a strong password"
             />
           </div>
           <div className="flex justify-end mb-6">

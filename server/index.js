@@ -53,6 +53,39 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
+// Add this temporarily to server/index.js
+app.get('/api/setup-indexes', async (req, res) => {
+  try {
+    const { sequelize } = require('./models'); // Ensure sequelize is imported
+    
+    // 1. Optimize Dashboard & Study: Composite index for Topic + Due Date
+    // This dramatically speeds up "Get due cards for this subject"
+    await sequelize.query(`
+      CREATE INDEX idx_cards_topic_review 
+      ON cards(topic_id, next_review);
+    `);
+
+    // 2. Optimize Analytics: Index for the Chart Date
+    // This makes the "Weekly Activity" chart load instant
+    await sequelize.query(`
+      CREATE INDEX idx_reviewlogs_reviewed_at 
+      ON reviewlogs(reviewed_at);
+    `);
+
+    // 3. Optimize Global Cram: Index for finding cards due globally
+    // (Your schema shows 'next_review' is MUL, but let's ensure it's optimized for sorting)
+    await sequelize.query(`
+      CREATE INDEX idx_cards_next_review_sort 
+      ON cards(next_review);
+    `);
+
+    res.send('✅ Indexes created successfully on Aiven!');
+  } catch (error) {
+    // If index already exists, it might throw an error, which is fine.
+    res.status(500).send('Error (Indexes might already exist): ' + error.message);
+  }
+});
+
 const authRoutes = require("./routes/authRoutes"); // <--- Import
 app.use("/api/auth", authRoutes);                  // <--- Use
 const contentRoutes = require("./routes/contentRoutes"); // <--- Import
