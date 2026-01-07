@@ -36,8 +36,21 @@ app.get("/api/status", async (req, res) => {
   }
 });
 
-app.get('/api/health', (req, res) => {
-  res.status(200).send('OK');
+app.get('/api/health', async (req, res) => {
+  try {
+    // This command forces a 'SELECT 1+1' query to the database.
+    // It verifies the connection AND counts as "activity" to Aiven.
+    await sequelize.authenticate();
+    
+    // Optional: Log it so you can see it working in Render logs
+    console.log('💓 Health Check: Database is active');
+    
+    res.status(200).send('OK - DB Active');
+  } catch (error) {
+    console.error('❌ Health Check Failed:', error.message);
+    // Return 500 so UptimeRobot knows something is wrong
+    res.status(500).send('Database Error');
+  }
 });
 
 const authRoutes = require("./routes/authRoutes"); // <--- Import
