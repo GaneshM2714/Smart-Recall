@@ -1,4 +1,4 @@
-const { Card, ReviewLog, sequelize } = require("../models");
+const { Card, ReviewLog, Topic, Subject, sequelize } = require("../models");
 const { calculateFSRS } = require("../utils/algorithm");
 const { Op } = require("sequelize");
 
@@ -9,11 +9,21 @@ exports.getStudyQueue = async (req, res) => {
       where: {
         [Op.or]: [
             { state: 'NEW' },
-            { next_review: { [Op.lte]: new Date() } } // Due Now or in Past
+            { next_review: { [Op.lte]: new Date() } }
         ]
       },
-      limit: 50, // Session Cap
-      order: [['next_review', 'ASC']] // Show oldest due first
+      limit: 50,
+      order: [['next_review', 'ASC']],
+      // SECURITY FIX: Filter by User via Topic -> Subject
+      include: [{
+        model: Topic,
+        required: true,
+        include: [{
+          model: Subject,
+          required: true,
+          where: { user_id: req.user.id }
+        }]
+      }]
     });
     res.json(cards);
   } catch (error) {
@@ -106,21 +116,24 @@ exports.getAnalytics = async (req, res) => {
 };
 
 // NEW: Cram Session (Review All Cards in a Subject)
+// Cram a specific Subject
 exports.getCramQueue = async (req, res) => {
   try {
     const { subjectId } = req.params;
     
-    // SQL: Get ALL cards for this subject, shuffled
-    const query = `
-      SELECT c.* FROM Cards c
-      JOIN Topics t ON c.topic_id = t.id
-      WHERE t.subject_id = :subjectId
-      ORDER BY RAND()
-    `;
-
-    const cards = await sequelize.query(query, {
-      replacements: { subjectId },
-      type: sequelize.QueryTypes.SELECT
+    const cards = await Card.findAll({
+      // Sequelize Random Sort (Works on Postgres/MySQL/SQLite)
+      order: sequelize.random(),
+      include: [{
+        model: Topic,
+        required: true,
+        where: { subject_id: subjectId }, // Filter by Subject
+        include: [{
+            model: Subject,
+            required: true,
+            where: { user_id: req.user.id } // Security check
+        }]
+      }]
     });
 
     res.json(cards);
@@ -129,17 +142,21 @@ exports.getCramQueue = async (req, res) => {
   }
 };
 
+// Random Mix (20 Cards from ANY of your subjects)
 exports.getGlobalCramQueue = async (req, res) => {
   try {
-    // SQL: Get 20 random cards from anywhere
-    const query = `
-      SELECT c.* FROM Cards c
-      ORDER BY RAND()
-      LIMIT 20
-    `;
-
-    const cards = await sequelize.query(query, {
-      type: sequelize.QueryTypes.SELECT
+    const cards = await Card.findAll({
+      order: sequelize.random(),
+      limit: 20,
+      include: [{
+        model: Topic,
+        required: true,
+        include: [{
+          model: Subject,
+          required: true,
+          where: { user_id: req.user.id } // Filter by User
+        }]
+      }]
     });
 
     res.json(cards);
