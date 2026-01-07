@@ -53,36 +53,35 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-// Add this temporarily to server/index.js
 app.get('/api/setup-indexes', async (req, res) => {
   try {
-    const { sequelize } = require('./models'); // Ensure sequelize is imported
-    
+    const { sequelize } = require('./models');
+
     // 1. Optimize Dashboard & Study: Composite index for Topic + Due Date
-    // This dramatically speeds up "Get due cards for this subject"
+    // Note: Using "Cards" (Capitalized)
     await sequelize.query(`
       CREATE INDEX idx_cards_topic_review 
-      ON cards(topic_id, next_review);
+      ON Cards(topic_id, next_review);
     `);
 
     // 2. Optimize Analytics: Index for the Chart Date
-    // This makes the "Weekly Activity" chart load instant
+    // Note: Using "ReviewLogs" (Capitalized R and L)
     await sequelize.query(`
       CREATE INDEX idx_reviewlogs_reviewed_at 
-      ON reviewlogs(reviewed_at);
+      ON ReviewLogs(reviewed_at);
     `);
 
     // 3. Optimize Global Cram: Index for finding cards due globally
-    // (Your schema shows 'next_review' is MUL, but let's ensure it's optimized for sorting)
+    // Note: Using "Cards" (Capitalized)
     await sequelize.query(`
       CREATE INDEX idx_cards_next_review_sort 
-      ON cards(next_review);
+      ON Cards(next_review);
     `);
 
     res.send('✅ Indexes created successfully on Aiven!');
   } catch (error) {
-    // If index already exists, it might throw an error, which is fine.
-    res.status(500).send('Error (Indexes might already exist): ' + error.message);
+    // If you run this twice, it will error saying "Index already exists". That is fine.
+    res.status(500).send('Error: ' + error.message);
   }
 });
 
