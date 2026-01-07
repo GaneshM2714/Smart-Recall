@@ -86,6 +86,34 @@ app.get('/api/setup-indexes', async (req, res) => {
   }
 });
 
+app.get('/api/check-schema', async (req, res) => {
+  try {
+    const { sequelize } = require('./models');
+    
+    // 1. Get List of Tables
+    // This returns something like [ { Tables_in_defaultdb: 'Cards' }, ... ]
+    const [tables] = await sequelize.query('SHOW TABLES');
+    
+    // 2. Get Schema for each table
+    const fullSchema = {};
+    
+    for (const tableObj of tables) {
+      // Extract table name (key name varies depending on DB name, so we grab the first value)
+      const tableName = Object.values(tableObj)[0];
+      
+      // Get columns for this table
+      const [columns] = await sequelize.query(`SHOW COLUMNS FROM \`${tableName}\``);
+      fullSchema[tableName] = columns;
+    }
+
+    // 3. Send back pretty JSON
+    res.json(fullSchema);
+    
+  } catch (error) {
+    res.status(500).send('Error inspecting DB: ' + error.message);
+  }
+});
+
 const authRoutes = require("./routes/authRoutes"); // <--- Import
 app.use("/api/auth", authRoutes);                  // <--- Use
 const contentRoutes = require("./routes/contentRoutes"); // <--- Import
