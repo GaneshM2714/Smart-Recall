@@ -8,5 +8,6 @@ router.post('/change-password', authMiddleware, authController.changePassword); 
 router.post('/forgot-password', authController.forgotPassword); // Public
 router.post('/reset-password/:token', authController.resetPassword); // Public
 router.delete('/delete-account', authMiddleware, authController.deleteAccount);
+router.post("/google", authController.googleLogin);
 
 module.exports = router;

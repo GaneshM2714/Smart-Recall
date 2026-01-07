@@ -4,9 +4,11 @@ const crypto = require("crypto");
 const nodemailer = require("nodemailer");
 const { User } = require("../models");
 const { Op } = require("sequelize"); // Needed for date comparisons
+const { OAuth2Client } = require('google-auth-library');
 
 // SECRET KEY (In production, put this in .env)
 const JWT_SECRET = process.env.JWT_SECRET || "super_secret_key_123";
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // EMAIL TRANSPORTER CONFIGURATION
 // Use environment variables in .env: EMAIL_USER=yourgmail@gmail.com, EMAIL_PASS=app_password
@@ -190,5 +192,51 @@ exports.deleteAccount = async (req, res) => {
     res.json({ message: "Account and all data permanently deleted." });
   } catch (error) {
     res.status(500).json({ error: "Failed to delete account" });
+  }
+};
+
+//7. GOOGLE LOGIN
+exports.googleLogin = async (req, res) => {
+  try {
+    const { token } = req.body; // The token from the frontend
+
+    // 1. Verify the token with Google
+    const ticket = await client.verifyIdToken({
+      idToken: token,
+      audience: process.env.GOOGLE_CLIENT_ID, 
+    });
+    
+    const payload = ticket.getPayload();
+    const { email, sub } = payload; // 'sub' is the unique Google ID
+
+    // 2. Check if user exists in OUR database
+    let user = await User.findOne({ where: { email } });
+
+    if (!user) {
+      // 3. If not, create a new user automatically
+      // We set a random password hash because they won't use a password to login
+      const randomPassword = Math.random().toString(36).slice(-8) + "GOOGLE_SECURE";
+      const hashedPassword = await bcrypt.hash(randomPassword, 10);
+
+      user = await User.create({
+        email,
+        password_hash: hashedPassword, 
+        // If you had a 'name' or 'avatar' column, you could add payload.name here
+      });
+    }
+
+    // 4. Generate OUR App Token (JWT)
+    // This is the same token used in your normal login
+    const appToken = jwt.sign(
+        { id: user.id, email: user.email }, 
+        JWT_SECRET, 
+        { expiresIn: "7d" }
+    );
+
+    res.json({ token: appToken, user: { id: user.id, email: user.email } });
+
+  } catch (error) {
+    console.error("Google Login Error:", error);
+    res.status(401).json({ error: "Google authentication failed" });
   }
 };
