@@ -113,44 +113,59 @@ app.get('/api/check-schema', async (req, res) => {
   }
 });
 
-app.get('/api/debug-data', async (req, res) => {
+// A "Public" Debug Route - No Login Required
+app.get('/api/debug-public', async (req, res) => {
   try {
-    const { User, Subject, Topic, Card } = require('./models');
-    const userId = req.user.id; // Ensure you are logged in when hitting this!
+    const { User, Subject, Topic, Card, sequelize } = require('./models');
 
-    // 1. Check User
-    const user = await User.findByPk(userId);
-    
-    // 2. Check Subjects
-    const subjects = await Subject.findAll({ where: { user_id: userId } });
-    const subjectIds = subjects.map(s => s.id);
+    // 1. List ALL Users
+    const users = await User.findAll({
+      attributes: ['id', 'email', 'createdAt']
+    });
 
-    // 3. Check Topics (orphaned vs linked)
-    const topics = await Topic.findAll({ where: { subject_id: subjectIds } });
-    const topicIds = topics.map(t => t.id);
-
-    // 4. Check Cards (The moment of truth)
-    // Count ALL cards in the system
-    const totalCardsInDb = await Card.count();
-    // Count cards that actually belong to your topics
-    const myCards = await Card.findAll({ where: { topic_id: topicIds } });
-
-    // 5. Check for "Orphans" (Cards with no Topic ID)
+    // 2. Count "Orphaned" Cards (Cards with no valid topic)
+    const totalCards = await Card.count();
     const orphanedCards = await Card.count({ where: { topic_id: null } });
 
+    // 3. Get Breakdown per User
+    const breakdown = [];
+    
+    for (const u of users) {
+      // Count Subjects for this user
+      const subjectCount = await Subject.count({ where: { user_id: u.id } });
+      
+      // Get Subject IDs to find Topics
+      const subjects = await Subject.findAll({ where: { user_id: u.id }, attributes: ['id'] });
+      const subjectIds = subjects.map(s => s.id);
+      
+      // Count Topics
+      const topicCount = await Topic.count({ where: { subject_id: subjectIds } });
+      
+      // Get Topic IDs to find Cards
+      const topics = await Topic.findAll({ where: { subject_id: subjectIds }, attributes: ['id'] });
+      const topicIds = topics.map(t => t.id);
+      
+      // Count Cards
+      const cardCount = await Card.count({ where: { topic_id: topicIds } });
+
+      breakdown.push({
+        email: u.email,
+        id: u.id,
+        subjects: subjectCount,
+        topics: topicCount,
+        cards: cardCount
+      });
+    }
+
     res.json({
-      debug_user: { id: userId, email: user?.email },
-      step_1_subjects: { count: subjects.length, ids: subjectIds },
-      step_2_topics: { count: topics.length, ids: topicIds },
-      step_3_cards: { 
-        total_in_db: totalCardsInDb, 
-        linked_to_me: myCards.length,
-        orphaned_null_topic: orphanedCards
-      }
+      total_users: users.length,
+      total_cards_in_db: totalCards,
+      orphaned_cards_count: orphanedCards,
+      user_breakdown: breakdown
     });
 
   } catch (error) {
-    res.status(500).json({ error: error.message, stack: error.stack });
+    res.status(500).json({ error: error.message });
   }
 });
 
