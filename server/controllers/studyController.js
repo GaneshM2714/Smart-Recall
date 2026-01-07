@@ -146,43 +146,44 @@ exports.getCramQueue = async (req, res) => {
 exports.getGlobalCramQueue = async (req, res) => {
   try {
     const userId = req.user.id;
-    console.log(`🔍 Global Cram: Fetching for User ${userId}`);
+    console.log(`🔍 DEBUG: Requesting Cram for User ID: ${userId}`);
 
-    // Step 1: Get all Subject IDs for this user
-    const subjects = await Subject.findAll({
+    // 1. Get Subject IDs
+    const subjects = await Subject.findAll({ 
       where: { user_id: userId },
-      attributes: ['id']
+      attributes: ['id'] 
     });
-    
-    // Extract IDs
     const subjectIds = subjects.map(s => s.id);
-    console.log(`found ${subjectIds.length} subjects`);
+    
+    if (subjectIds.length === 0) {
+      console.log("❌ DEBUG: No Subjects found for this user.");
+      return res.json([]); 
+    }
 
-    if (subjectIds.length === 0) return res.json([]); // Stop if no subjects
-
-    // Step 2: Get all Topic IDs for these subjects
+    // 2. Get Topic IDs
     const topics = await Topic.findAll({
       where: { subject_id: { [Op.in]: subjectIds } },
       attributes: ['id']
     });
-
     const topicIds = topics.map(t => t.id);
-    console.log(`found ${topicIds.length} topics`);
 
-    if (topicIds.length === 0) return res.json([]); // Stop if no topics
+    if (topicIds.length === 0) {
+      console.log("❌ DEBUG: No Topics found.");
+      return res.json([]);
+    }
 
-    // Step 3: Get 20 random cards from these topics
+    // 3. Get Cards
     const cards = await Card.findAll({
       where: { topic_id: { [Op.in]: topicIds } },
       order: sequelize.random(),
       limit: 20
     });
-    
-    console.log(`found ${cards.length} cards`);
 
+    console.log(`✅ DEBUG: Found ${cards.length} cards.`);
     res.json(cards);
+
   } catch (error) {
-    console.error("❌ Global Cram Error:", error);
+    console.error("Cram Error:", error);
     res.status(500).json({ error: error.message });
   }
 };
