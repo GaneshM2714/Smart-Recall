@@ -15,8 +15,8 @@ router.post("/review", studyController.submitReview);
 router.get("/analytics", studyController.getAnalytics);
 
 // FIX: Removed 'authenticateToken' here
+router.get('/cram/global', studyController.getGlobalCramQueue);
 router.get('/cram/:subjectId', studyController.getCramQueue);
 
-router.get('/cram/global', studyController.getGlobalCramQueue);
 
 module.exports = router;    

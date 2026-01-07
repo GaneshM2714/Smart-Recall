@@ -1,10 +1,22 @@
+// server/controllers/studyController.js
 const { Card, ReviewLog, Topic, Subject, sequelize } = require("../models");
 const { calculateFSRS } = require("../utils/algorithm");
 const { Op } = require("sequelize");
 
-// 1. GET QUEUE (Cards Due)
+// 1. GET QUEUE (Cards Due) - Now Supports Filtering by Subject!
 exports.getStudyQueue = async (req, res) => {
   try {
+    // Check if frontend sent a specific subject ID (e.g., ?subjectId=...)
+    const subjectId = req.query.subjectId || req.params.subjectId; 
+
+    // Build the "Where" clause for the Subject
+    const subjectFilter = { user_id: req.user.id };
+    
+    // If a subjectId exists, restrict the query to that subject
+    if (subjectId) {
+      subjectFilter.id = subjectId; 
+    }
+
     const cards = await Card.findAll({
       where: {
         [Op.or]: [
@@ -14,14 +26,14 @@ exports.getStudyQueue = async (req, res) => {
       },
       limit: 50,
       order: [['next_review', 'ASC']],
-      // SECURITY FIX: Filter by User via Topic -> Subject
+      // SECURITY & FILTERING: Link Card -> Topic -> Subject
       include: [{
         model: Topic,
         required: true,
         include: [{
           model: Subject,
           required: true,
-          where: { user_id: req.user.id }
+          where: subjectFilter // <--- DYNAMIC FILTER APPLIED HERE
         }]
       }]
     });
@@ -31,7 +43,7 @@ exports.getStudyQueue = async (req, res) => {
   }
 };
 
-// 2. SUBMIT REVIEW (The Smart Part)
+// 2. SUBMIT REVIEW (The Smart Part - Preserved)
 exports.submitReview = async (req, res) => {
   const { cardId, rating, durationMs } = req.body;
   
@@ -60,7 +72,7 @@ exports.submitReview = async (req, res) => {
     // If user found it 'EASY', boost siblings
     if (rating === 'EASY') {
       await Card.increment(
-        { stability: 0.05 }, // Add 5% (Simple boost) or multiply logic
+        { stability: 0.05 }, // Add 5% (Simple boost)
         { 
           where: {
             topic_id: card.topic_id,   // Same Topic
@@ -69,8 +81,6 @@ exports.submitReview = async (req, res) => {
           transaction: t 
         }
       );
-      // Note: In production, you might want to recalculate 'next_review' for siblings too,
-      // but strictly adjusting stability is safer for now.
     }
 
     await t.commit();
@@ -82,10 +92,10 @@ exports.submitReview = async (req, res) => {
   }
 };
 
-// 3. GET ANALYTICS (Reviews per Day)
+// 3. GET ANALYTICS (Reviews per Day - Preserved)
 exports.getAnalytics = async (req, res) => {
   try {
-    // Raw SQL is often easier for date grouping
+    // Raw SQL is easiest for date grouping across tables
     const [results] = await sequelize.query(`
       SELECT 
         DATE(reviewed_at) as date, 
@@ -115,15 +125,48 @@ exports.getAnalytics = async (req, res) => {
   }
 };
 
-// NEW: Cram Session (Review All Cards in a Subject)
-// Cram a specific Subject
+// 4. RANDOM MIX (Global Cram - Revised to match Working Subject Cram)
+exports.getGlobalCramQueue = async (req, res) => {
+  try {
+    console.log(`🔍 Global Cram: Fetching for User ${req.user.id}`);
+
+    const cards = await Card.findAll({
+      // Fetch cards linked to the user
+      include: [{
+        model: Topic,
+        required: true, // Inner Join (Must have a topic)
+        include: [{
+          model: Subject,
+          required: true, // Inner Join (Must have a subject)
+          where: { user_id: req.user.id } // <--- Filter by User Here
+        }]
+      }],
+      limit: 100 // Fetch a pool of 100 cards
+    });
+
+    console.log(`✅ Global Cram: Found ${cards.length} cards via Associations`);
+
+    // Shuffle in JavaScript (Fisher-Yates)
+    for (let i = cards.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [cards[i], cards[j]] = [cards[j], cards[i]];
+    }
+
+    // Return top 20
+    res.json(cards.slice(0, 20));
+
+  } catch (error) {
+    console.error("Global Cram Error:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// 5. SUBJECT CRAM (Specific Subject - Fixed with JS Shuffle)
 exports.getCramQueue = async (req, res) => {
   try {
     const { subjectId } = req.params;
     
     const cards = await Card.findAll({
-      // Sequelize Random Sort (Works on Postgres/MySQL/SQLite)
-      order: sequelize.random(),
       include: [{
         model: Topic,
         required: true,
@@ -133,57 +176,18 @@ exports.getCramQueue = async (req, res) => {
             required: true,
             where: { user_id: req.user.id } // Security check
         }]
-      }]
+      }],
+      limit: 100 // Fetch a good pool to shuffle from
     });
+
+    // Shuffle in JavaScript for consistency
+    for (let i = cards.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [cards[i], cards[j]] = [cards[j], cards[i]];
+    }
 
     res.json(cards);
   } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};
-
-// Random Mix (20 Cards from ANY of your subjects)
-exports.getGlobalCramQueue = async (req, res) => {
-  try {
-    const userId = req.user.id;
-    console.log(`🔍 DEBUG: Requesting Cram for User ID: ${userId}`);
-
-    // 1. Get Subject IDs
-    const subjects = await Subject.findAll({ 
-      where: { user_id: userId },
-      attributes: ['id'] 
-    });
-    const subjectIds = subjects.map(s => s.id);
-    
-    if (subjectIds.length === 0) {
-      console.log("❌ DEBUG: No Subjects found for this user.");
-      return res.json([]); 
-    }
-
-    // 2. Get Topic IDs
-    const topics = await Topic.findAll({
-      where: { subject_id: { [Op.in]: subjectIds } },
-      attributes: ['id']
-    });
-    const topicIds = topics.map(t => t.id);
-
-    if (topicIds.length === 0) {
-      console.log("❌ DEBUG: No Topics found.");
-      return res.json([]);
-    }
-
-    // 3. Get Cards
-    const cards = await Card.findAll({
-      where: { topic_id: { [Op.in]: topicIds } },
-      order: sequelize.random(),
-      limit: 20
-    });
-
-    console.log(`✅ DEBUG: Found ${cards.length} cards.`);
-    res.json(cards);
-
-  } catch (error) {
-    console.error("Cram Error:", error);
     res.status(500).json({ error: error.message });
   }
 };

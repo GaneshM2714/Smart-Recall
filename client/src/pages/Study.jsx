@@ -21,19 +21,23 @@ function Study() {
 
   const loadQueue = async () => {
     try {
-      let endpoint = '/study/queue'; // Default
+      let endpoint = '/study/queue';
 
       if (mode === 'cram') {
         if (type === 'global') {
-            endpoint = '/study/cram/global'; // New Global Shuffle
+          endpoint = '/study/cram/global';
         } else if (subjectId) {
-            endpoint = `/study/cram/${subjectId}`; // Subject Cram
+          endpoint = `/study/cram/${subjectId}`;
+        }
+      } else {
+        // STANDARD STUDY FIX
+        if (subjectId) {
+          endpoint = `/study/queue?subjectId=${subjectId}`;
         }
       }
 
       const { data } = await API.get(endpoint);
 
-      // Shuffle for cram mode so it's not predictable
       if (mode === 'cram') {
         data.sort(() => Math.random() - 0.5);
       }
