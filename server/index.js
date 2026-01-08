@@ -1,4 +1,3 @@
-// server/index.js
 const express = require("express");
 const cors = require("cors");
 const { sequelize } = require("./models"); 
@@ -9,9 +8,23 @@ const { initScheduler } = require('./services/reminderService');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// 1. MIDDLEWARE
 app.use(express.json());
 app.use(cors());
 app.use(compression());
+
+// 2. LATENCY DEBUGGER (Add this to see where the 500ms is coming from)
+// This prints: "⏱️ GET /api/me [Backend Processing]: 23ms"
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    if (req.originalUrl.startsWith('/api')) {
+        console.log(`⏱️ ${req.method} ${req.originalUrl} [Backend]: ${duration}ms`);
+    }
+  });
+  next();
+});
 
 // --- ROUTES ---
 const authRoutes = require("./routes/authRoutes");
@@ -36,7 +49,7 @@ app.get("/api/status", async (req, res) => {
 app.get('/api/health', async (req, res) => {
   try {
     await sequelize.authenticate();
-    console.log('💓 Health Check: Database is active');
+    // Keep health checks quiet in logs unless error
     res.status(200).send('OK - DB Active');
   } catch (error) {
     console.error('❌ Health Check Failed:', error.message);
@@ -55,8 +68,8 @@ app.get('/api/debug-public', async (req, res) => {
     for (const u of users) {
        const cCount = await Card.count({ 
          include: [{ 
-            model: Topic, required: true, 
-            include: [{ model: Subject, required: true, where: { user_id: u.id } }] 
+           model: Topic, required: true, 
+           include: [{ model: Subject, required: true, where: { user_id: u.id } }] 
          }]
        });
        breakdown.push({ email: u.email, cards: cCount });
@@ -71,19 +84,15 @@ app.get('/api/debug-public', async (req, res) => {
 // --- TEMPORARY FIX ROUTE (Delete this after running once) ---
 app.get('/api/fix-db-avatar', async (req, res) => {
   try {
-    const { sequelize } = require('./models');
-    
-    // This command speaks directly to your Aiven database
     await sequelize.query("ALTER TABLE Users ADD COLUMN avatar VARCHAR(255) NULL;");
-    
-    res.send("✅ Success! The 'avatar' column was added to your Aiven database.");
+    res.send("✅ Success! The 'avatar' column was added.");
   } catch (error) {
     res.send("❌ Error (or column already exists): " + error.message);
   }
 });
 
 // --- STARTUP ---
-// REMOVED { alter: true } to stop the duplicate index errors
+// REMOVED { alter: true } to stop duplicate index errors
 sequelize.sync().then(() => {
   console.log("✅ Database Synced");
   
