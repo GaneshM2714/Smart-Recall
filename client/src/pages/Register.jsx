@@ -3,6 +3,7 @@ import API from "../api";
 import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { UserPlus } from 'lucide-react';
+import { GoogleLogin } from '@react-oauth/google'; // <--- 1. IMPORT THIS
 import Card from '../components/ui/Card';
 import PasswordInput from '../components/PasswordInput';
 
@@ -11,6 +12,7 @@ function Register() {
   const [password, setPassword] = useState('');
   const navigate = useNavigate();
 
+  // --- EMAIL REGISTER HANDLER ---
   const handleRegister = async (e) => {
     e.preventDefault();
     try {
@@ -21,9 +23,28 @@ function Register() {
       const { data } = await API.post('/auth/login', { email, password });
       localStorage.setItem('token', data.token);
       
-      navigate('/dashboard');
+      navigate('/dashboard', { replace: true });
     } catch (error) {
       toast.error(error.response?.data?.error || 'Registration failed.');
+    }
+  };
+
+  // --- GOOGLE REGISTER HANDLER ---
+  // (This is identical to Login because the backend handles creation automatically)
+  const handleGoogleSuccess = async (credentialResponse) => {
+    try {
+      const { data } = await API.post('/auth/google', {
+        token: credentialResponse.credential
+      });
+
+      localStorage.setItem('token', data.token);
+      toast.success('Account created via Google! 🎉');
+      
+      navigate('/dashboard', { replace: true });
+
+    } catch (error) {
+      console.error("Google Backend Error", error);
+      toast.error(error.response?.data?.error || "Google Registration Failed");
     }
   };
 
@@ -52,7 +73,6 @@ function Register() {
           
           <div className="mb-6">
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Password</label>
-            {/* UPDATED: Using the custom PasswordInput component */}
             <PasswordInput 
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -67,6 +87,29 @@ function Register() {
             Create Account
           </button>
         </form>
+
+        {/* --- DIVIDER --- */}
+        <div className="my-6 flex items-center">
+          <div className="flex-grow border-t border-gray-300 dark:border-gray-600"></div>
+          <span className="mx-4 text-gray-400 text-sm font-medium">OR</span>
+          <div className="flex-grow border-t border-gray-300 dark:border-gray-600"></div>
+        </div>
+
+        {/* --- GOOGLE BUTTON --- */}
+        <div className="flex justify-center w-full">
+          <GoogleLogin
+            onSuccess={handleGoogleSuccess}
+            onError={() => {
+              console.log('Register Failed');
+              toast.error("Google Registration Failed");
+            }}
+            useOneTap
+            shape="rectangular"
+            theme="filled_blue"
+            width="100%" 
+            text="signup_with" // Changes text to "Sign up with Google"
+          />
+        </div>
         
         <div className="mt-6 text-center text-sm text-gray-600 dark:text-gray-400">
           Already have an account?{' '}
