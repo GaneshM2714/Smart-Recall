@@ -6,6 +6,8 @@ import RichText from '../components/RichText';
 import toast from 'react-hot-toast';
 import { useSearchParams } from 'react-router-dom';
 
+
+
 function Study() {
   const [queue, setQueue] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -23,6 +25,7 @@ function Study() {
 
   const loadQueue = async () => {
     try {
+      
       let endpoint = '/study/queue';
 
       if (mode === 'cram') {
@@ -36,7 +39,7 @@ function Study() {
             endpoint = `/study/queue?subjectId=${subjectId}`;
         }
       }
-
+      console.log("🚀 FINAL ENDPOINT:", endpoint); 
       const { data } = await API.get(endpoint);
 
       if (mode === 'cram') {
@@ -130,6 +133,7 @@ function Study() {
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex flex-col items-center p-4 font-sans transition-colors">
 
       {/* Header */}
+      {/* {toast("On Study")} */}
       <div className="w-full max-w-2xl mb-6 mt-4">
         <div className="flex justify-between items-center mb-2">
           <button onClick={() => navigate('/dashboard')} className="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition">

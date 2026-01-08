@@ -17,4 +17,8 @@ router.put('/cards/:id', contentController.updateCard);
 router.post("/topics/:subjectId", contentController.createTopic);
 router.post("/cards", contentController.createCard);
 router.get('/subjects/:id/cards', contentController.getSubjectCards);
+
+router.delete('/topics/:id',  contentController.deleteTopic);
+router.delete('/cards/:id',  contentController.deleteCard);
+
 module.exports = router;

@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import API from '../api';
-import { ArrowLeft, Search, Plus } from 'lucide-react';
+import { ArrowLeft, Search, Plus, Settings } from 'lucide-react'; // Added Settings icon
 import toast from 'react-hot-toast';
-import VirtualCardList from '../components/VirtualCardList'; // Import the virtualizer
+import VirtualCardList from '../components/VirtualCardList'; 
+import EditCardModal from '../components/EditCardModal';      // <--- IMPORTED
+import TopicManagerModal from '../components/TopicManagerModal'; // <--- IMPORTED
 
 function SubjectView() {
   const { id } = useParams();
@@ -11,6 +13,10 @@ function SubjectView() {
   const [topics, setTopics] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+
+  // UI States
+  const [editingCard, setEditingCard] = useState(null);
+  const [showTopicManager, setShowTopicManager] = useState(false);
 
   useEffect(() => { fetchDetails(); }, [id]);
 
@@ -34,7 +40,12 @@ function SubjectView() {
     } catch (err) { toast.error("Failed to delete"); }
   };
 
-  // 1. First, filter the topics based on search
+  // Callback when a card is updated in the modal
+  const handleCardUpdated = (updatedCard) => {
+    fetchDetails(); // Refresh list to show changes
+  };
+
+  // 1. Filter topics based on search
   const filteredTopics = topics.map(topic => ({
     ...topic,
     Cards: topic.Cards.filter(c => 
@@ -43,8 +54,7 @@ function SubjectView() {
     )
   })).filter(t => t.Cards.length > 0 || searchTerm === '');
 
-  // 2. Then, flatten the structure for the Virtual List
-  // We attach the 'topicName' to each card so we can still display it if needed
+  // 2. Flatten for Virtual List
   const allCards = filteredTopics.flatMap(t => 
     t.Cards.map(c => ({ ...c, topicName: t.title }))
   );
@@ -52,7 +62,6 @@ function SubjectView() {
   if (loading) return <div className="p-8 text-center">Loading Library...</div>;
 
   return (
-    // 'h-screen' and 'flex-col' are vital here to let the list expand
     <div className="h-screen flex flex-col p-6 max-w-6xl mx-auto">
       
       {/* Header */}
@@ -66,12 +75,24 @@ function SubjectView() {
                 <p className="text-gray-500 dark:text-gray-400 text-sm">Manage your cards and topics</p>
             </div>
         </div>
-        <button 
-            onClick={() => navigate('/add-card')}
-            className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition"
-        >
-            <Plus size={18} /> Add Card
-        </button>
+        
+        <div className="flex gap-2">
+            {/* Manage Topics Button */}
+            <button 
+                onClick={() => setShowTopicManager(true)}
+                className="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 px-4 py-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition font-medium border border-gray-200 dark:border-gray-700"
+            >
+                <Settings size={18} /> Topics
+            </button>
+
+            {/* Add Card Button */}
+            <button 
+                onClick={() => navigate('/add-card')}
+                className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition font-medium shadow-md shadow-indigo-200 dark:shadow-none"
+            >
+                <Plus size={18} /> Add Card
+            </button>
+        </div>
       </div>
 
       {/* Search Bar */}
@@ -87,13 +108,12 @@ function SubjectView() {
       </div>
 
       {/* Virtual List Container */}
-      {/* This container expands to fill the rest of the screen */}
       <div className="flex-1 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden bg-gray-50 dark:bg-gray-900/50">
         {allCards.length > 0 ? (
            <VirtualCardList 
              cards={allCards} 
              onDelete={handleDeleteCard}
-             onEdit={() => toast("Edit coming soon")}
+             onEdit={(card) => setEditingCard(card)} // <--- CONNECTED HERE
            />
         ) : (
            <div className="flex flex-col items-center justify-center h-full text-gray-500">
@@ -101,6 +121,28 @@ function SubjectView() {
            </div>
         )}
       </div>
+
+      {/* --- MODALS --- */}
+      
+      {/* 1. Edit Card Modal */}
+      {editingCard && (
+        <EditCardModal 
+            card={editingCard}
+            onClose={() => setEditingCard(null)}
+            onUpdate={handleCardUpdated}
+        />
+      )}
+
+      {/* 2. Topic Manager Modal */}
+      {showTopicManager && (
+        <TopicManagerModal 
+            topics={topics} // Pass original unfiltered topics
+            onClose={() => setShowTopicManager(false)}
+            onTopicDeleted={() => {
+                fetchDetails(); // Refresh list if a topic is deleted
+            }}
+        />
+      )}
 
     </div>
   );

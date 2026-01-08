@@ -14,7 +14,7 @@ function Dashboard() {
 
   // MODAL STATE
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalMode, setModalMode] = useState('create'); // 'create' or 'rename'
+  const [modalMode, setModalMode] = useState('create'); 
   const [activeSubjectId, setActiveSubjectId] = useState(null);
   const [modalDefaultText, setModalDefaultText] = useState('');
 
@@ -54,11 +54,20 @@ function Dashboard() {
   const handleSaveSubject = async (title) => {
     try {
       if (modalMode === 'create') {
-        await API.post('/content/subjects', { title });
-        toast.success('Subject Created!');
+        const { data } = await API.post('/content/subjects', { title });
+        
+        if (data.created) {
+            toast.success('Subject Created!');
+        } else {
+            toast('Subject already exists', { icon: 'ℹ️' });
+        }
+
       } else {
-        await API.put(`/content/subjects/${activeSubjectId}`, { title });
-        toast.success('Subject Renamed!');
+        const { data } = await API.put(`/content/subjects/${activeSubjectId}`, { title });
+        if(!data.created){
+          toast("Subject already exisits", {icon : 'ℹ️'});
+        }
+        else toast.success('Subject Renamed!');
       }
       fetchData();
     } catch (error) {
@@ -95,7 +104,7 @@ function Dashboard() {
       {/* TOP ROW: Analytics (Left) + Widgets (Right) */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
 
-        {/* 1. Analytics Chart (Takes 2/3rds width on large screens) */}
+        {/* 1. Analytics Chart */}
         <Card className="xl:col-span-2 p-6 flex flex-col justify-between">
           <div className="flex items-center gap-2 mb-6">
             <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg text-blue-600 dark:text-blue-400">
@@ -103,7 +112,6 @@ function Dashboard() {
             </div>
             <h2 className="text-lg font-bold text-gray-800 dark:text-white">Weekly Activity</h2>
           </div>
-          {/* Fixed Height Container for Chart */}
           <div className="h-64 w-full">
             {chartData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
@@ -123,9 +131,8 @@ function Dashboard() {
           </div>
         </Card>
 
-        {/* 2. Action Widgets (Takes 1/3rd width) */}
+        {/* 2. Action Widgets */}
         <div className="flex flex-col gap-4">
-          {/* Big Random Mix Button */}
           <button
             onClick={() => navigate('/study?mode=cram&type=global')}
             className="flex-1 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-2xl p-6 text-left shadow-lg relative overflow-hidden group transition-all hover:scale-[1.02] min-h-[140px]"
@@ -142,7 +149,6 @@ function Dashboard() {
             </div>
           </button>
 
-          {/* Smaller Actions Row */}
           <div className="grid grid-cols-2 gap-4">
             <button
               onClick={() => navigate('/add-card')}
@@ -162,7 +168,7 @@ function Dashboard() {
         </div>
       </div>
 
-      {/* 3. Subjects Grid (Expanded Columns) */}
+      {/* 3. Subjects Grid */}
       <h2 className="text-xl font-bold text-gray-800 dark:text-white mb-4">Your Library</h2>
 
       {subjects.length === 0 ? (
@@ -201,7 +207,8 @@ function Dashboard() {
               {/* Split Buttons */}
               <div className="flex items-center gap-2 mt-auto">
                 <button
-                  onClick={() => navigate('/study')}
+                  /* 👇 THE FIX IS HERE: We now pass the subjectId in the URL */
+                  onClick={() => navigate(`/study?mode=normal&subjectId=${sub.id}`)}
                   className="flex-1 py-2.5 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 transition shadow-sm hover:shadow active:scale-[0.98] flex items-center justify-center gap-2"
                   title="Start spaced repetition session"
                 >

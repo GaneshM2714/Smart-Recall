@@ -25,25 +25,44 @@ function Profile() {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteInput, setDeleteInput] = useState('');
 
-  // 1. Load User Data & Provider
+  // 1. Load User Data (Token + Fresh Fetch)
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      try {
-        const decoded = jwtDecode(token);
-        setUser({ 
-            email: decoded.email, 
-            id: decoded.id, 
-            avatar: decoded.avatar || null,
-            provider: decoded.provider || 'email' // <--- CAPTURE PROVIDER HERE
-        });
-        
-        if (decoded.iat) {
+    const fetchFreshData = async () => {
+      // A. Load from Token first (Fast, but might be stale)
+      const token = localStorage.getItem('token');
+      if (token) {
+        try {
+          const decoded = jwtDecode(token);
+          setUser({ 
+              email: decoded.email, 
+              id: decoded.id, 
+              avatar: decoded.avatar || null, // Takes old avatar initially
+              provider: decoded.provider || 'email' 
+          });
+          
+          if (decoded.iat) {
             const date = new Date(decoded.iat * 1000);
             setMemberSince(date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }));
-        }
-      } catch (error) { console.error("Invalid token"); }
-    }
+          }
+        } catch (error) { console.error("Invalid token"); }
+      }
+
+      // B. Fetch FRESH data from Database (The Real Fix)
+      try {
+        const { data } = await API.get('/auth/me'); // Calls the new route
+        setUser(prev => ({
+            ...prev,
+            name: data.name,
+            email: data.email,
+            avatar: data.avatar, // ✅ This gets the URL from the DB
+            provider: data.auth_provider
+        }));
+      } catch (error) {
+        console.error("Failed to refresh profile:", error);
+      }
+    };
+
+    fetchFreshData();
   }, []);
 
   // 2. Handle Image Upload

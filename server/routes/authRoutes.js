@@ -5,6 +5,7 @@ const authMiddleware = require("../middleware/authMiddleware");
 const { upload } = require('../utils/cloudinary');
 router.post("/register", authController.register);
 router.post("/login", authController.login);
+router.get('/me', authMiddleware, authController.getMe);
 router.post('/change-password', authMiddleware, authController.changePassword); // Protected
 router.post('/forgot-password', authController.forgotPassword); // Public
 router.post('/reset-password/:token', authController.resetPassword); // Public

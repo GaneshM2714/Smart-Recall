@@ -30,8 +30,8 @@ const User = sequelize.define("User", {
   avatar: {
     type: DataTypes.STRING,
     allowNull: true,
+    defaultValue: null
   },
-
 
   // NEW: Fields for Reset Flow & Google  
   reset_password_token: { type: DataTypes.STRING, allowNull: true },

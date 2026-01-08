@@ -3,15 +3,12 @@ const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
 const { User } = require("../models");
-const { Op } = require("sequelize"); // Needed for date comparisons
+const { Op } = require("sequelize"); 
 const { OAuth2Client } = require('google-auth-library');
 
-// SECRET KEY (In production, put this in .env)
 const JWT_SECRET = process.env.JWT_SECRET || "super_secret_key_123";
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-// EMAIL TRANSPORTER CONFIGURATION
-// Use environment variables in .env: EMAIL_USER=yourgmail@gmail.com, EMAIL_PASS=app_password
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
@@ -20,21 +17,19 @@ const transporter = nodemailer.createTransport({
   }
 });
 
-// 1. REGISTER LOGIC
+// 1. REGISTER
 exports.register = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, name } = req.body; // Added name support
 
-    // Check if user exists
     const existingUser = await User.findOne({ where: { email } });
     if (existingUser) return res.status(400).json({ error: "Email already taken" });
 
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create User
     await User.create({
       email,
+      name: name || "User", // Default name if none provided
       password_hash: hashedPassword,
       auth_provider: 'email'
     });
@@ -45,43 +40,94 @@ exports.register = async (req, res) => {
   }
 };
 
-// 2. LOGIN LOGIC
+// 2. LOGIN (Includes Avatar)
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Find User
     const user = await User.findOne({ where: { email } });
     if (!user) return res.status(400).json({ error: "User not found" });
 
-    // Check Password
     const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) return res.status(400).json({ error: "Invalid credentials" });
 
-    // Generate Token
-    const token = jwt.sign({ id: user.id, email: user.email,provider: user.auth_provider || 'email' }, JWT_SECRET, { expiresIn: "7d" });
+    const token = jwt.sign({ id: user.id, email: user.email, provider: user.auth_provider || 'email' }, JWT_SECRET, { expiresIn: "7d" });
 
-    res.json({ token, user: { id: user.id, email: user.email } });
+    // ✅ FIX: Sending avatar here
+    res.json({ 
+      token, 
+      user: { 
+        id: user.id, 
+        email: user.email, 
+        name: user.name, 
+        avatar: user.avatar 
+      } 
+    });
+    
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
 
-// 3. CHANGE PASSWORD (For Profile Page - Protected Route)
+// 3. GET CURRENT USER (Crucial for Page Refresh)
+exports.getMe = async (req, res) => {
+  try {
+    // Debugging: Check if middleware passed the user
+    // console.log("🔍 GetMe Request User:", req.user);
+
+    if (!req.user || !req.user.id) {
+        return res.status(401).json({ error: "Unauthorized: No user ID in request" });
+    }
+
+    // SAFER QUERY: Don't ask for specific columns like 'auth_provider' if they might be missing
+    const user = await User.findByPk(req.user.id, {
+      attributes: { exclude: ['password_hash'] } // Just exclude the password, get everything else
+    });
+    
+    if (!user) {
+        console.log("❌ User not found in DB for ID:", req.user.id);
+        return res.status(404).json({ error: "User not found" });
+    }
+    
+    res.json(user);
+  } catch (error) {
+    console.error("🔥 GetMe Error:", error); // This prints the crash reason to your terminal
+    res.status(500).json({ error: error.message });
+  }
+};
+// 4. UPDATE PROFILE (Name/Avatar text update)
+exports.updateProfile = async (req, res) => {
+  try {
+    const { name, avatar } = req.body;
+    const user = await User.findByPk(req.user.id);
+
+    if (name) user.name = name;
+    if (avatar) user.avatar = avatar; // Persist URL to DB
+
+    await user.save();
+
+    // ✅ FIX: Returning updated avatar
+    res.json({ 
+        id: user.id, 
+        email: user.email, 
+        name: user.name, 
+        avatar: user.avatar 
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// 5. CHANGE PASSWORD
 exports.changePassword = async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
-    
-    // req.user.id comes from the authMiddleware
     const user = await User.findByPk(req.user.id);
 
-    // Verify old password
     const valid = await bcrypt.compare(currentPassword, user.password_hash);
     if (!valid) return res.status(400).json({ error: "Current password incorrect" });
 
-    // Hash new password
     const hashedPassword = await bcrypt.hash(newPassword, 10);
-    
     await user.update({ password_hash: hashedPassword });
 
     res.json({ message: "Password updated successfully" });
@@ -90,47 +136,30 @@ exports.changePassword = async (req, res) => {
   }
 };
 
-// 4. FORGOT PASSWORD (Request Reset Link - Public Route)
+// 6. FORGOT PASSWORD
 exports.forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
     const user = await User.findOne({ where: { email } });
-    
-    // Security: Don't reveal if user exists, just say "If account exists, email sent"
-    // But for dev debugging, we return 404 if not found
     if (!user) return res.status(404).json({ error: "User not found" });
 
-    // Generate Secure Token
     const token = crypto.randomBytes(20).toString('hex');
-    const expiry = Date.now() + 3600000; // Token valid for 1 hour
+    const expiry = Date.now() + 3600000; 
 
-    // Save token to DB
-    await user.update({ 
-      reset_password_token: token,
-      reset_password_expires: expiry 
-    });
+    await user.update({ reset_password_token: token, reset_password_expires: expiry });
 
-    // Create Link
-    // NOTE: Make sure this matches your Frontend URL (localhost:5173 or your deployed domain)
     const resetUrl = `http://localhost:5173/reset-password/${token}`;
     
     const mailOptions = {
       to: user.email,
       from: process.env.EMAIL_USER,
       subject: 'Password Reset Request - Smart Recall',
-      text: `You are receiving this because you (or someone else) have requested the reset of the password for your account.\n\n
-      Please click on the following link, or paste this into your browser to complete the process:\n\n
-      ${resetUrl}\n\n
-      If you did not request this, please ignore this email and your password will remain unchanged.\n`
+      text: `Reset your password here: ${resetUrl}`
     };
 
-    // Fallback for Development (If no email credentials set up)
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-      console.log("========================================");
-      console.log("⚠️ EMAIL CREDENTIALS MISSING IN .ENV");
-      console.log("🔗 DEBUG RESET LINK:", resetUrl);
-      console.log("========================================");
-      return res.json({ message: "Dev Mode: Check server console for reset link" });
+    if (!process.env.EMAIL_USER) {
+      console.log("DEBUG LINK:", resetUrl);
+      return res.json({ message: "Dev Mode: Check console" });
     }
 
     await transporter.sendMail(mailOptions);
@@ -142,100 +171,74 @@ exports.forgotPassword = async (req, res) => {
   }
 };
 
-// 5. RESET PASSWORD (Use Token to set new password - Public Route)
+// 7. RESET PASSWORD
 exports.resetPassword = async (req, res) => {
   try {
     const { token } = req.params;
     const { password } = req.body;
 
-    // Find user with this token AND ensure token hasn't expired
     const user = await User.findOne({ 
       where: { 
         reset_password_token: token,
-        reset_password_expires: { [Op.gt]: Date.now() } // Expiry must be greater than "now"
+        reset_password_expires: { [Op.gt]: Date.now() } 
       }
     });
 
-    if (!user) {
-      return res.status(400).json({ error: "Password reset token is invalid or has expired." });
-    }
+    if (!user) return res.status(400).json({ error: "Invalid/Expired Token" });
 
-    // Hash new password
     const hashedPassword = await bcrypt.hash(password, 10);
-    
-    // Update User & Clear Token
-    await user.update({
-      password_hash: hashedPassword,
-      reset_password_token: null,
-      reset_password_expires: null
-    });
+    await user.update({ password_hash: hashedPassword, reset_password_token: null, reset_password_expires: null });
 
-    res.json({ message: "Password has been successfully changed" });
+    res.json({ message: "Password changed successfully" });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
 
-// 6. DELETE ACCOUNT (Destructive Action)
-exports.deleteAccount = async (req, res) => {
-  try {
-    // req.user.id comes from the authMiddleware
-    const user = await User.findByPk(req.user.id);
-    
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
-    // DESTROY USER
-    // Sequelize CASCADE will automatically delete all related data (Cards, Subjects, etc.)
-    await user.destroy();
-
-    res.json({ message: "Account and all data permanently deleted." });
-  } catch (error) {
-    res.status(500).json({ error: "Failed to delete account" });
-  }
-};
-
-//7. GOOGLE LOGIN
+// 8. GOOGLE LOGIN (Includes Avatar from Google)
 exports.googleLogin = async (req, res) => {
   try {
-    const { token } = req.body; // The token from the frontend
+    const { token } = req.body; 
 
-    // 1. Verify the token with Google
     const ticket = await client.verifyIdToken({
       idToken: token,
       audience: process.env.GOOGLE_CLIENT_ID, 
     });
     
     const payload = ticket.getPayload();
-    const { email, sub } = payload; // 'sub' is the unique Google ID
+    const { email, name, picture } = payload; // Google gives us 'picture'
 
-    // 2. Check if user exists in OUR database
     let user = await User.findOne({ where: { email } });
 
     if (!user) {
-      // 3. If not, create a new user automatically
-      // We set a random password hash because they won't use a password to login
       const randomPassword = Math.random().toString(36).slice(-8) + "GOOGLE_SECURE";
       const hashedPassword = await bcrypt.hash(randomPassword, 10);
 
       user = await User.create({
         email,
+        name: name || "Google User",
+        avatar: picture, // ✅ FIX: Save Google Photo to DB
         password_hash: hashedPassword, 
         auth_provider: 'google'
-        // If you had a 'name' or 'avatar' column, you could add payload.name here
       });
     }
 
-    // 4. Generate OUR App Token (JWT)
-    // This is the same token used in your normal login
     const appToken = jwt.sign(
-        { id: user.id, email: user.email , provider: user.auth_provider || 'email'}, 
+        { id: user.id, email: user.email, provider: user.auth_provider || 'email'}, 
         JWT_SECRET,
         { expiresIn: "7d" }
     );
 
-    res.json({ token: appToken, user: { id: user.id, email: user.email } });
+    // ✅ FIX: Return Avatar to Frontend
+    res.json({ 
+        token: appToken, 
+        user: { 
+            id: user.id, 
+            email: user.email, 
+            name: user.name, 
+            avatar: user.avatar 
+        } 
+    });
 
   } catch (error) {
     console.error("Google Login Error:", error);
@@ -243,24 +246,31 @@ exports.googleLogin = async (req, res) => {
   }
 };
 
-//8. Upload Avatar
+// 9. UPLOAD AVATAR (Cloudinary)
 exports.uploadAvatar = async (req, res) => {
   try {
-    // Multer (cloudinary storage) puts the file info in req.file
-    if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded" });
-    }
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
-    // Cloudinary returns the secure URL in 'path'
     const avatarUrl = req.file.path; 
 
-    // Update the User record in DB
-    // req.user.id comes from the authMiddleware
     await User.update({ avatar: avatarUrl }, { where: { id: req.user.id } });
 
-    res.json({ message: "Avatar updated successfully", avatar: avatarUrl });
+    // ✅ FIX: Return URL so frontend updates immediately
+    res.json({ message: "Avatar updated", avatar: avatarUrl });
   } catch (error) {
     console.error("Upload Error:", error);
     res.status(500).json({ error: "Image upload failed" });
+  }
+};
+
+// 10. DELETE ACCOUNT
+exports.deleteAccount = async (req, res) => {
+  try {
+    const user = await User.findByPk(req.user.id);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    await user.destroy();
+    res.json({ message: "Account deleted." });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to delete account" });
   }
 };
