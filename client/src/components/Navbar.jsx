@@ -10,8 +10,8 @@ function Navbar() {
   const linkClass = (path) => 
     `flex items-center gap-2 px-3 py-2 rounded-md transition-colors ${
       isActive(path) 
-        ? 'bg-indigo-50 text-indigo-700 font-medium dark:bg-indigo-900/50 dark:text-indigo-300' // Dark Mode Active State
-        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white' // Dark Mode Inactive State
+        ? 'bg-indigo-50 text-indigo-700 font-medium dark:bg-indigo-900/50 dark:text-indigo-300' 
+        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white' 
     }`;
 
   const handleLogout = () => {
@@ -20,7 +20,6 @@ function Navbar() {
   };
 
   return (
-    // Added dark:bg-gray-900 and dark:border-gray-700
     <nav className="bg-white border-b border-gray-200 sticky top-0 z-50 dark:bg-gray-900 dark:border-gray-700 transition-colors duration-300">
       <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
         
@@ -29,7 +28,7 @@ function Navbar() {
           <div className="bg-indigo-600 text-white p-1.5 rounded-lg shadow-sm">
             <BookOpen size={20} />
           </div>
-          <span>Smart Recall</span>
+          <span>Memory-Forged</span>
         </Link>
 
         {/* Links */}

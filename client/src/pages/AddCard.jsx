@@ -130,7 +130,6 @@ function AddCard() {
           </div>
         </div>
 
-        {/* INPUT AREA with TABS */}
         <form onSubmit={handleSave} className="space-y-6">
           
           {/* Tabs for Write / Preview */}

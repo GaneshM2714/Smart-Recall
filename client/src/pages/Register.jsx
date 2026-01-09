@@ -30,7 +30,6 @@ function Register() {
   };
 
   // --- GOOGLE REGISTER HANDLER ---
-  // (This is identical to Login because the backend handles creation automatically)
   const handleGoogleSuccess = async (credentialResponse) => {
     try {
       const { data } = await API.post('/auth/google', {
@@ -38,7 +37,8 @@ function Register() {
       });
 
       localStorage.setItem('token', data.token);
-      toast.success('Account created via Google! 🎉');
+      if(data.created) toast.success('Account created via Google!');
+      else toast.success("Welcome back!");
       
       navigate('/dashboard', { replace: true });
 
@@ -107,7 +107,7 @@ function Register() {
             shape="rectangular"
             theme="filled_blue"
             width="100%" 
-            text="signup_with" // Changes text to "Sign up with Google"
+            text="signup_with" 
           />
         </div>
         

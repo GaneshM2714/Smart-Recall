@@ -1,10 +1,9 @@
-import { Link, useNavigate } from 'react-router-dom'; // Added useNavigate
+import { Link, useNavigate } from 'react-router-dom'; 
 import { BookOpen, Brain, Zap, BarChart3, ChevronRight, Layers, LayoutDashboard, LogOut } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 function Landing() {
   const navigate = useNavigate();
-  // Simple check: Do we have a token?
   const isLoggedIn = !!localStorage.getItem('token');
 
   const handleLogout = () => {
@@ -22,7 +21,7 @@ function Landing() {
           <div className="bg-indigo-600 text-white p-1.5 rounded-lg">
             <BookOpen size={24} />
           </div>
-          <span>Smart Recall</span>
+          <span>Memory-Forged</span>
         </div>
         
         {/* CONDITIONAL NAV BUTTONS */}
@@ -99,7 +98,7 @@ function Landing() {
       <section className="bg-gray-50 dark:bg-gray-800/50 py-24">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-16">
-            <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">Why Smart Recall?</h2>
+            <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">Why Memory-Forged?</h2>
             <p className="text-gray-600 dark:text-gray-400">Everything you need to ace your exams and master your skills.</p>
           </div>
           
@@ -135,9 +134,9 @@ function Landing() {
             <div className="bg-gray-900 dark:bg-white text-white dark:text-gray-900 p-1 rounded">
               <BookOpen size={16} />
             </div>
-            <span>Smart Recall</span>
+            <span>Memory-Forged</span>
           </div>
-          <p className="text-gray-500 text-sm">© 2026 Smart Recall. Built for Students.</p>
+          <p className="text-gray-500 text-sm">© 2026 Memory-Forged. Built for Students.</p>
         </div>
       </footer>
     </div>

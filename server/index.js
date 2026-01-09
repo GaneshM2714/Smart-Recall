@@ -97,9 +97,9 @@ sequelize.sync().then(() => {
   console.log("✅ Database Synced");
   
   // Start Server
+  initScheduler(); 
   app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
   
   // Start Scheduler
-  initScheduler(); 
   
 }).catch(err => console.log("❌ DB Error:", err));

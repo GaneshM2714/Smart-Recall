@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, BookOpen, User, LogOut } from 'lucide-react'; // Import icons needed for mobile nav
+import { LayoutDashboard, BookOpen, User, LogOut } from 'lucide-react'; 
 import Sidebar from './Sidebar';
 
 function Layout() {
@@ -61,7 +61,7 @@ function Layout() {
            className="flex flex-col items-center gap-1 p-2 text-red-400"
         >
            <LogOut size={24} />
-           <span className="text-[10px] font-medium">Exit</span>
+           <span className="text-[10px] font-medium">Logout</span>
         </button>
       </nav>
 

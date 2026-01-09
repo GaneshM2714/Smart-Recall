@@ -1,4 +1,3 @@
-// This component acts as the single source of truth for your "Container" styling
 const Card = ({ children, className = "" }) => {
   return (
     <div 

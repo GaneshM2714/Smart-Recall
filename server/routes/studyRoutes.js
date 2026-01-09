@@ -18,5 +18,8 @@ router.get("/analytics", studyController.getAnalytics);
 router.get('/cram/global', studyController.getGlobalCramQueue);
 router.get('/cram/:subjectId', studyController.getCramQueue);
 
+router.get('/graph',  studyController.getKnowledgeGraph); // Global Graph
+router.get('/graph/:subjectId',  studyController.getSubjectGraph); // Subject Graph
+
 
 module.exports = router;    

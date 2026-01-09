@@ -8,7 +8,7 @@ const VirtualCardList = ({ cards = [], onDelete, onEdit }) => {
   const rowVirtualizer = useVirtualizer({
     count: cards.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 100, // row height
+    estimateSize: () => 100, 
     overscan: 5,
   });
 

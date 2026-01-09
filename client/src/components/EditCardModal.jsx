@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { X, Save, Type } from 'lucide-react';
-import MarkdownToolbar from './MarkdownToolbar'; // Reuse your toolbar
+import MarkdownToolbar from './MarkdownToolbar';
 import API from '../api';
 import toast from 'react-hot-toast';
 
-const EditCardModal = ({ card, onClose, onUpdate }) => {
+function EditCardModal (card, onClose, onUpdate){
   const [front, setFront] = useState(card.front);
   const [back, setBack] = useState(card.back);
   const [saving, setSaving] = useState(false);

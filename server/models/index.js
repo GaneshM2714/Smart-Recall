@@ -26,21 +26,30 @@ const sequelize = new Sequelize(
 const User = sequelize.define("User", {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
   email: { type: DataTypes.STRING, allowNull: false, unique: true },
-  password_hash: { type: DataTypes.STRING, allowNull: true }, // Allow null for Google users
-  avatar: {
-    type: DataTypes.STRING,
-    allowNull: true,
-    defaultValue: null
-  },
+  password_hash: { type: DataTypes.STRING, allowNull: true },
+  avatar: { type: DataTypes.STRING, allowNull: true, defaultValue: null },
 
-  // NEW: Fields for Reset Flow & Google  
+  // Auth Fields
   reset_password_token: { type: DataTypes.STRING, allowNull: true },
   reset_password_expires: { type: DataTypes.DATE, allowNull: true },
-  auth_provider: {
-    type: DataTypes.STRING,
-    defaultValue: 'email'
+  auth_provider: { type: DataTypes.STRING, defaultValue: 'email' },
+  google_id: { type: DataTypes.STRING, allowNull: true },
+
+  // 🔥 GAMIFICATION FIELDS (New)
+  streak: { 
+    type: DataTypes.INTEGER, 
+    defaultValue: 0 
   },
-  google_id: { type: DataTypes.STRING, allowNull: true }
+  last_active_date: { 
+    type: DataTypes.DATEONLY, // Stores YYYY-MM-DD (No time, prevents timezone bugs)
+    allowNull: true 
+  },
+  // Stores daily counts: { "2025-01-01": 5, "2025-01-02": 12 }
+  // This powers the GitHub-style Heatmap efficiently
+  activity_log: { 
+    type: DataTypes.JSON, 
+    defaultValue: {} 
+  }
 });
 
 // --- SUBJECT ---

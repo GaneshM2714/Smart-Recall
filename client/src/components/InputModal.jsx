@@ -23,14 +23,12 @@ function InputModal({ isOpen, onClose, onSubmit, title, placeholder }) {
           </button>
         </div>
 
-        {/* Input - THE FIX IS HERE */}
         <div className="space-y-4">
           <input
             autoFocus
             type="text"
             className="w-full p-3 rounded-lg border border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-indigo-500 outline-none transition-all
             bg-white text-gray-900 placeholder-gray-400" 
-            /* ^^^ FIXED: bg-white + text-gray-900 ensures black text on white background always */
             placeholder={placeholder}
             value={value}
             onChange={(e) => setValue(e.target.value)}

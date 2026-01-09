@@ -206,9 +206,12 @@ exports.googleLogin = async (req, res) => {
     });
     
     const payload = ticket.getPayload();
-    const { email, name, picture } = payload; // Google gives us 'picture'
+    const { email, name, picture } = payload; 
 
     let user = await User.findOne({ where: { email } });
+    let created = true;
+
+    if(user) created = false;
 
     if (!user) {
       const randomPassword = Math.random().toString(36).slice(-8) + "GOOGLE_SECURE";
@@ -217,7 +220,7 @@ exports.googleLogin = async (req, res) => {
       user = await User.create({
         email,
         name: name || "Google User",
-        avatar: picture, // ✅ FIX: Save Google Photo to DB
+        avatar: picture, 
         password_hash: hashedPassword, 
         auth_provider: 'google'
       });
@@ -229,7 +232,6 @@ exports.googleLogin = async (req, res) => {
         { expiresIn: "7d" }
     );
 
-    // ✅ FIX: Return Avatar to Frontend
     res.json({ 
         token: appToken, 
         user: { 
@@ -237,7 +239,8 @@ exports.googleLogin = async (req, res) => {
             email: user.email, 
             name: user.name, 
             avatar: user.avatar 
-        } 
+        },
+        created
     });
 
   } catch (error) {

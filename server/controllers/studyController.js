@@ -1,21 +1,14 @@
 // server/controllers/studyController.js
-const { Card, ReviewLog, Topic, Subject, sequelize } = require("../models");
-const { calculateFSRS } = require("../utils/algorithm");
+const { Card, ReviewLog, Topic, Subject, User, sequelize } = require("../models"); // 👈 Added User import
+const { calculateFSRS, applyRippleBoost } = require("../utils/algorithm");
 const { Op } = require("sequelize");
 
-// 1. GET QUEUE (Cards Due) - Now Supports Filtering by Subject!
+// 1. GET QUEUE (No changes needed)
 exports.getStudyQueue = async (req, res) => {
   try {
-    // Check if frontend sent a specific subject ID (e.g., ?subjectId=...)
     const subjectId = req.query.subjectId || req.params.subjectId; 
-
-    // Build the "Where" clause for the Subject
     const subjectFilter = { user_id: req.user.id };
-    
-    // If a subjectId exists, restrict the query to that subject
-    if (subjectId) {
-      subjectFilter.id = subjectId; 
-    }
+    if (subjectId) subjectFilter.id = subjectId; 
 
     const cards = await Card.findAll({
       where: {
@@ -26,14 +19,13 @@ exports.getStudyQueue = async (req, res) => {
       },
       limit: 50,
       order: [['next_review', 'ASC']],
-      // SECURITY & FILTERING: Link Card -> Topic -> Subject
       include: [{
         model: Topic,
         required: true,
         include: [{
           model: Subject,
           required: true,
-          where: subjectFilter // <--- DYNAMIC FILTER APPLIED HERE
+          where: subjectFilter 
         }]
       }]
     });
@@ -43,48 +35,102 @@ exports.getStudyQueue = async (req, res) => {
   }
 };
 
-// 2. SUBMIT REVIEW (The Smart Part - Preserved)
+// 2. SUBMIT REVIEW (Updated for Gamification 🔥)
 exports.submitReview = async (req, res) => {
   const { cardId, rating, durationMs } = req.body;
+  const userId = req.user.id; // From Auth Middleware
   
-  // Start a Transaction (All or Nothing)
   const t = await sequelize.transaction();
 
   try {
-    // A. Fetch the Card
+    // A. Fetch Card
     const card = await Card.findByPk(cardId, { transaction: t });
     if (!card) throw new Error("Card not found");
 
-    // B. Run FSRS Algorithm
+    // B. FSRS Algorithm
     const updates = calculateFSRS(card.toJSON(), rating);
-    
-    // C. Update the Main Card
     await card.update(updates, { transaction: t });
 
-    // D. Log the Review
+    // C. Log Review
     await ReviewLog.create({
       card_id: cardId,
       rating,
       duration_ms: durationMs || 0
     }, { transaction: t });
 
-    // --- E. THE GRAPH LINKING (Your Custom Logic) ---
-    // If user found it 'EASY', boost siblings
-    if (rating === 'EASY') {
-      await Card.increment(
-        { stability: 0.05 }, // Add 5% (Simple boost)
-        { 
-          where: {
-            topic_id: card.topic_id,   // Same Topic
-            id: { [Op.ne]: card.id },  // Not the current card
-          },
-          transaction: t 
+    // --- D. UPDATE USER STREAK & HEATMAP (New Logic) ---
+    const user = await User.findByPk(userId, { transaction: t });
+    const today = new Date().toISOString().split('T')[0]; // "2025-01-09"
+    const lastActive = user.last_active_date; // "2025-01-08"
+
+    let newStreak = user.streak;
+    const newActivityLog = { ...user.activity_log }; // Clone existing JSON
+
+    // 1. Update Heatmap Count
+    if (newActivityLog[today]) {
+        newActivityLog[today] += 1;
+    } else {
+        newActivityLog[today] = 1;
+    }
+
+    // 2. Calculate Streak
+    if (lastActive !== today) {
+        if (lastActive) {
+            // Calculate difference in days
+            const diffTime = new Date(today) - new Date(lastActive);
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+
+            if (diffDays === 1) {
+                // Studied yesterday? Increment!
+                newStreak += 1;
+            } else {
+                // Missed a day? Reset to 1 (Today is day 1)
+                newStreak = 1;
+            }
+        } else {
+            // First time ever
+            newStreak = 1;
         }
-      );
+    }
+    // If lastActive === today, do nothing to streak (already counted for today)
+
+    await user.update({
+        streak: newStreak,
+        last_active_date: today,
+        activity_log: newActivityLog
+    }, { transaction: t });
+
+    // --- E. RIPPLE BOOST (Existing Logic) ---
+    if (rating === 'EASY') {
+       const siblings = await Card.findAll({
+           where: {
+               topic_id: card.topic_id,
+               id: { [Op.ne]: card.id },
+               state: { [Op.ne]: 'NEW' },
+               next_review: { [Op.gt]: new Date() }
+           },
+           limit: 5,
+           order: sequelize.random(),
+           transaction: t
+       });
+
+       const siblingUpdates = siblings.map(async (sibling) => {
+           const boostData = applyRippleBoost(sibling.toJSON());
+           return sibling.update(boostData, { transaction: t });
+       });
+
+       await Promise.all(siblingUpdates);
     }
 
     await t.commit();
-    res.json({ message: "Review Saved", updates });
+    
+    // Return streak info so frontend can animate it!
+    res.json({ 
+        message: "Review Saved", 
+        updates, 
+        streak: newStreak, 
+        reviewsToday: newActivityLog[today] 
+    });
 
   } catch (error) {
     await t.rollback();
@@ -92,10 +138,10 @@ exports.submitReview = async (req, res) => {
   }
 };
 
-// 3. GET ANALYTICS (Reviews per Day - Preserved)
+// 3. GET ANALYTICS (Updated to return Heatmap Data)
 exports.getAnalytics = async (req, res) => {
   try {
-    // Raw SQL is easiest for date grouping across tables
+    // 1. Fetch standard chart data (Last 7 days)
     const [results] = await sequelize.query(`
       SELECT 
         DATE(reviewed_at) as date, 
@@ -113,81 +159,186 @@ exports.getAnalytics = async (req, res) => {
       LIMIT 7
     `);
     
-    // Format for Frontend
     const chartData = results.map(row => ({
       date: new Date(row.date).toLocaleDateString(undefined, { weekday: 'short' }),
       reviews: row.count
     }));
 
-    res.json(chartData);
+    // 2. Fetch User Gamification Data
+    const user = await User.findByPk(req.user.id, {
+        attributes: ['streak', 'activity_log']
+    });
+
+    res.json({
+        chartData, // Existing Bar Chart
+        streak: user.streak || 0,
+        heatmap: user.activity_log || {} // Full JSON history for Calendar Heatmap
+    });
+
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
 
-// 4. RANDOM MIX (Global Cram - Revised to match Working Subject Cram)
+// ... (Keep existing getGlobalCramQueue, getCramQueue, getKnowledgeGraph, getSubjectGraph exactly as they are)
+// 4. RANDOM MIX
 exports.getGlobalCramQueue = async (req, res) => {
-  try {
-    console.log(`🔍 Global Cram: Fetching for User ${req.user.id}`);
-
-    const cards = await Card.findAll({
-      // Fetch cards linked to the user
-      include: [{
-        model: Topic,
-        required: true, // Inner Join (Must have a topic)
-        include: [{
-          model: Subject,
-          required: true, // Inner Join (Must have a subject)
-          where: { user_id: req.user.id } // <--- Filter by User Here
-        }]
-      }],
-      limit: 100 // Fetch a pool of 100 cards
-    });
-
-    console.log(`✅ Global Cram: Found ${cards.length} cards via Associations`);
-
-    // Shuffle in JavaScript (Fisher-Yates)
-    for (let i = cards.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [cards[i], cards[j]] = [cards[j], cards[i]];
-    }
-
-    // Return top 20
-    res.json(cards.slice(0, 20));
-
-  } catch (error) {
-    console.error("Global Cram Error:", error);
-    res.status(500).json({ error: error.message });
-  }
+    // ... paste existing code
+    try {
+        const cards = await Card.findAll({
+          include: [{
+            model: Topic,
+            required: true,
+            include: [{
+              model: Subject,
+              required: true,
+              where: { user_id: req.user.id }
+            }]
+          }],
+          limit: 100
+        });
+        for (let i = cards.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [cards[i], cards[j]] = [cards[j], cards[i]];
+        }
+        res.json(cards.slice(0, 20));
+      } catch (error) {
+        res.status(500).json({ error: error.message });
+      }
 };
 
-// 5. SUBJECT CRAM (Specific Subject - Fixed with JS Shuffle)
+// 5. SUBJECT CRAM
 exports.getCramQueue = async (req, res) => {
-  try {
-    const { subjectId } = req.params;
-    
-    const cards = await Card.findAll({
-      include: [{
-        model: Topic,
-        required: true,
-        where: { subject_id: subjectId }, // Filter by Subject
-        include: [{
-            model: Subject,
+    // ... paste existing code
+    try {
+        const { subjectId } = req.params;
+        const cards = await Card.findAll({
+          include: [{
+            model: Topic,
             required: true,
-            where: { user_id: req.user.id } // Security check
-        }]
-      }],
-      limit: 100 // Fetch a good pool to shuffle from
-    });
+            where: { subject_id: subjectId },
+            include: [{
+                model: Subject,
+                required: true,
+                where: { user_id: req.user.id }
+            }]
+          }],
+          limit: 100
+        });
+        for (let i = cards.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [cards[i], cards[j]] = [cards[j], cards[i]];
+        }
+        res.json(cards);
+      } catch (error) {
+        res.status(500).json({ error: error.message });
+      }
+};
 
-    // Shuffle in JavaScript for consistency
-    for (let i = cards.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [cards[i], cards[j]] = [cards[j], cards[i]];
-    }
+// 6. GRAPH
+exports.getKnowledgeGraph = async (req, res) => {
+    // ... paste existing code
+    try {
+        const userId = req.user.id;
+        const subjects = await Subject.findAll({
+          where: { user_id: userId },
+          attributes: ['id', 'title'],
+          include: [{
+            model: Topic,
+            attributes: ['id', 'title'],
+            include: [{ 
+                model: Card,
+                attributes: ['id', 'front', 'state', 'stability'] 
+            }]
+          }]
+        });
+    
+        const nodes = [];
+        const links = [];
+    
+        subjects.forEach(subject => {
+          nodes.push({ id: `sub-${subject.id}`, name: subject.title, type: 'SUBJECT', val: 30, color: '#f59e0b' });
+          subject.Topics.forEach(topic => {
+            const topicNodeId = `topic-${topic.id}`;
+            nodes.push({
+              id: topicNodeId,
+              name: topic.title,
+              type: 'TOPIC',
+              val: 20, 
+              color: '#6366f1' 
+            });
+            topic.Cards.forEach(card => {
+              const cardNodeId = `card-${card.id}`;
+              let cardColor = '#9ca3af'; 
+              if (card.state === 'REVIEW') {
+                  cardColor = card.stability > 20 ? '#10b981' : '#3b82f6'; 
+              }
+              nodes.push({
+                id: cardNodeId,
+                name: card.front, 
+                type: 'CARD',
+                val: 5 + (card.stability || 0), 
+                color: cardColor,
+                stability: card.stability
+              });
+              links.push({
+                source: topicNodeId,
+                target: cardNodeId
+              });
+            });
+          });
+        });
+        res.json({ nodes, links });
+      } catch (error) {
+        console.error("Graph Error:", error);
+        res.status(500).json({ error: error.message });
+      }
+};
 
-    res.json(cards);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+// 7. SUBJECT GRAPH
+exports.getSubjectGraph = async (req, res) => {
+    // ... paste existing code
+    try {
+        const { subjectId } = req.params;
+        const subject = await Subject.findOne({
+          where: { id: subjectId, user_id: req.user.id },
+          include: [{
+            model: Topic,
+            include: [{ 
+                model: Card,
+                attributes: ['id', 'front', 'back', 'state', 'stability', 'difficulty']
+            }]
+          }]
+        });
+        if (!subject) return res.status(404).json({ error: "Subject not found" });
+        const nodes = [];
+        const links = [];
+        nodes.push({ id: 'HUB', name: subject.title, type: 'HUB', val: 50 });
+    
+        subject.Topics.forEach(topic => {
+          const topicId = `topic-${topic.id}`;
+          nodes.push({ id: topicId, name: topic.title, type: 'TOPIC', val: 20 });
+          links.push({ source: 'HUB', target: topicId, value: 5 }); 
+          topic.Cards.forEach(card => {
+            nodes.push({
+              id: `card-${card.id}`,
+              name: card.front,
+              back: card.back,
+              type: 'CARD',
+              stability: Math.round(card.stability), 
+              difficulty: Math.round(card.difficulty), 
+              state: card.state,
+              color: card.stability > 20 ? '#10b981' : (card.state === 'NEW' ? '#9ca3af' : '#3b82f6')
+            });
+            links.push({ 
+                source: topicId, 
+                target: `card-${card.id}`, 
+                value: Math.max(1, card.stability / 5) 
+            });
+          });
+        });
+        res.json({ nodes, links });
+      } catch (error) {
+        res.status(500).json({ error: error.message });
+      }
 };

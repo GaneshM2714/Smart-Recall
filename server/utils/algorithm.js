@@ -52,3 +52,20 @@ exports.calculateFSRS = (card, rating) => {
 
   return { stability, difficulty, reps, state, next_review: nextDate };
 };
+
+// 4. AUGMENTATION: The "Ripple Boost" (AR-02)
+// Boosts siblings by 5% (1.05x) without changing their difficulty
+exports.applyRippleBoost = (siblingCard) => {
+  let { stability, next_review } = siblingCard;
+  
+  // AR-02.2: Apply 5% Boost
+  const BOOST_FACTOR = 1.05; 
+  stability = parseFloat(stability) * BOOST_FACTOR;
+
+  // Recalculate Date based on new stability
+  const interval = calculateInterval(stability);
+  const newDate = new Date();
+  newDate.setDate(newDate.getDate() + interval);
+
+  return { stability, next_review: newDate };
+};

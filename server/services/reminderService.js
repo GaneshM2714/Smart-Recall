@@ -1,8 +1,8 @@
 const cron = require('node-cron');
 const nodemailer = require('nodemailer');
 const { sequelize } = require('../models');
+require('dotenv').config(); // Ensure env vars are loaded
 
-// Configure Email (Same as Auth)
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
@@ -14,9 +14,10 @@ const transporter = nodemailer.createTransport({
 const sendReminders = async () => {
   console.log('⏰ Running Daily Reminder Job...');
   
+  // 👇 Get Client URL from .env (Default to localhost if missing)
+  const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
+
   try {
-    // 1. COMPLEX QUERY: Find Users who have cards due (next_review < NOW)
-    // We join User -> Subject -> Topic -> Card to count due cards per user.
     const query = `
       SELECT u.email, COUNT(c.id) as due_count
       FROM Users u
@@ -38,7 +39,6 @@ const sendReminders = async () => {
 
     console.log(`📧 Sending reminders to ${results.length} users.`);
 
-    // 2. Loop through users and send emails
     for (const user of results) {
       const { email, due_count } = user;
       
@@ -53,14 +53,17 @@ const sendReminders = async () => {
             <p>You have <strong>${due_count} flashcards</strong> waiting for review right now.</p>
             <p>Remember, the key to long-term memory is consistency. A quick 5-minute session is all it takes.</p>
             <br>
-            <a href="http://localhost:5173/dashboard" style="background-color: #4f46e5; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">Start Review Session</a>
+            
+            <a href="${CLIENT_URL}/dashboard" style="background-color: #4f46e5; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">
+                Start Review Session
+            </a>
+            
             <br><br>
             <p style="color: #666; font-size: 12px;">Keep learning,<br>The Smart Recall Team</p>
           </div>
         `
       };
 
-      // Send (Don't await loop to prevent blocking, but catch errors)
       transporter.sendMail(mailOptions).catch(err => 
         console.error(`❌ Failed to email ${email}:`, err.message)
       );
@@ -71,12 +74,8 @@ const sendReminders = async () => {
   }
 };
 
-// Start the Cron Job
 const initScheduler = () => {
-  // Cron Syntax: "Minute Hour * * *"
-  // "0 9 * * *" means "Run at 9:00 AM every day"
-  // For testing right now, use "* * * * *" (Every minute)
-  
+  // Run daily at 9:00 AM
   cron.schedule('0 9 * * *', () => {
     sendReminders();
   });

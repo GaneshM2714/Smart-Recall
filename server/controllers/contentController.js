@@ -188,24 +188,51 @@ exports.getSubjects = async (req, res) => {
       where: { user_id: req.user.id },
       attributes: {
         include: [
-          [
-            sequelize.literal(`(
-              SELECT COUNT(*)
-              FROM Cards AS c
-              INNER JOIN Topics AS t ON c.topic_id = t.id
-              WHERE t.subject_id = Subject.id
-              AND (c.state = 'NEW' OR c.next_review <= NOW())
-            )`),
-            'dueCount'
-          ]
+          // 1. COUNT MASTERED (Stability > 21)
+          [sequelize.literal(`(
+            SELECT COUNT(*)
+            FROM Cards AS c
+            JOIN Topics AS t ON c.topic_id = t.id
+            WHERE t.subject_id = Subject.id
+            AND c.stability >= 21
+          )`), 'masteredCount'],
+
+          // 2. COUNT LEARNING (Stability between 0.1 and 21)
+          [sequelize.literal(`(
+            SELECT COUNT(*)
+            FROM Cards AS c
+            JOIN Topics AS t ON c.topic_id = t.id
+            WHERE t.subject_id = Subject.id
+            AND c.stability > 0 AND c.stability < 21
+          )`), 'learningCount'],
+
+          // 3. COUNT NEW (Stability = 0)
+          [sequelize.literal(`(
+            SELECT COUNT(*)
+            FROM Cards AS c
+            JOIN Topics AS t ON c.topic_id = t.id
+            WHERE t.subject_id = Subject.id
+            AND (c.stability = 0 OR c.stability IS NULL)
+          )`), 'newCount'],
+
+          // 4. COUNT DUE (Standard Due Count)
+          [sequelize.literal(`(
+            SELECT COUNT(*)
+            FROM Cards AS c
+            JOIN Topics AS t ON c.topic_id = t.id
+            WHERE t.subject_id = Subject.id
+            AND c.next_review <= NOW()
+            AND c.state != 'NEW'
+          )`), 'dueCount']
         ]
       },
-      include: [{ model: Topic, attributes: ['id', 'title'] }],
-      order: [['createdAt', 'DESC']]
+      include: [{ model: Topic }] // Keep topics for the "X Topics" badge
     });
+
     res.json(subjects);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error(error);
+    res.status(500).json({ error: 'Failed to fetch subjects' });
   }
 };
 

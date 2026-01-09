@@ -8,9 +8,9 @@ const TopicManagerModal = ({ topics, onClose, onTopicDeleted }) => {
     if (!confirm("Delete this topic? All cards inside it will be lost forever.")) return;
 
     try {
-      await API.delete(`/content/topics/${topicId}`); // Using the route we created
+      await API.delete(`/content/topics/${topicId}`); 
       toast.success("Topic deleted");
-      onTopicDeleted(); // Refresh the parent
+      onTopicDeleted(); 
     } catch (error) {
       toast.error("Failed to delete topic");
     }
