@@ -1,32 +1,34 @@
 import { useState, useEffect } from 'react';
 import API from '../api';
-import { BookOpen, Plus, TrendingUp, Layers, Zap, Network, Flame, Calendar } from 'lucide-react'; // 👈 Added Flame & Calendar
-import { 
-  PieChart, Pie, Cell, Tooltip, ResponsiveContainer 
+import { BookOpen, Plus, TrendingUp, Layers, Zap, Network, Flame, Calendar, Sparkles } from 'lucide-react';
+import {
+  PieChart, Pie, Cell, Tooltip, ResponsiveContainer
 } from 'recharts';
 import InputModal from '../components/InputModal';
 import Card from '../components/ui/Card';
 import SubjectMenu from '../components/SubjectMenu';
-import SubjectVisualizer from '../components/SubjectVisualizer'; 
-import ActivityHeatmap from '../components/ActivityHeatmap'; // 👈 Import the Heatmap
+import SubjectVisualizer from '../components/SubjectVisualizer';
+import ActivityHeatmap from '../components/ActivityHeatmap';
+import AICardGenerator from '../components/AICardGenerator';
 import toast from 'react-hot-toast';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 function Dashboard() {
   const [subjects, setSubjects] = useState([]);
-  
+
   // --- GAMIFICATION STATE ---
   const [heatmapData, setHeatmapData] = useState({});
   const [streak, setStreak] = useState(0);
 
   // MODAL STATE
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalMode, setModalMode] = useState('create'); 
+  const [isAiModalOpen, setIsAiModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState('create');
   const [activeSubjectId, setActiveSubjectId] = useState(null);
   const [modalDefaultText, setModalDefaultText] = useState('');
 
   // VISUALIZER STATE
-  const [graphSubjectId, setGraphSubjectId] = useState(null); 
+  const [graphSubjectId, setGraphSubjectId] = useState(null);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -42,9 +44,9 @@ function Dashboard() {
         API.get('/study/analytics')
       ]);
       setSubjects(subRes.data);
-      
-      // 👈 Set Gamification Data from Backend
-      setHeatmapData(chartRes.data.heatmap || {}); 
+
+      // Set Gamification Data
+      setHeatmapData(chartRes.data.heatmap || {});
       setStreak(chartRes.data.streak || 0);
 
     } catch (error) { toast.error("Failed to load dashboard data"); }
@@ -69,17 +71,17 @@ function Dashboard() {
     try {
       if (modalMode === 'create') {
         const { data } = await API.post('/content/subjects', { title });
-        
+
         if (data.created) {
-            toast.success('Subject Created!');
+          toast.success('Subject Created!');
         } else {
-            toast('Subject already exists', { icon: 'ℹ️' });
+          toast('Subject already exists', { icon: 'ℹ️' });
         }
 
       } else {
         const { data } = await API.put(`/content/subjects/${activeSubjectId}`, { title });
-        if(!data.created){
-          toast("Subject already exists", {icon : 'ℹ️'});
+        if (!data.created) {
+          toast("Subject already exists", { icon: 'ℹ️' });
         }
         else toast.success('Subject Renamed!');
       }
@@ -101,17 +103,77 @@ function Dashboard() {
     navigate(`/study?mode=cram&subjectId=${id}`);
   };
 
+  // --- 🤖 AI CARD SAVING LOGIC (UPDATED) ---
+  const handleSaveAiCards = async (targetSubjectId, topicTitle, cards) => {
+    // 1. Validation
+    if (!targetSubjectId) return toast.error("No subject selected!");
+    if (!topicTitle) return toast.error("Topic title is missing!");
+
+    // 2. Find the Subject object locally
+    const targetSubject = subjects.find(s => s.id == targetSubjectId);
+    if (!targetSubject) return toast.error("Subject not found");
+
+    try {
+      let topicId = null;
+
+      // 3. Find OR Create Topic
+      // First, check if the topic already exists in this subject (Case Insensitive)
+      const existingTopic = targetSubject.Topics?.find(
+        t => t.title.toLowerCase() === topicTitle.toLowerCase()
+      );
+
+      if (existingTopic) {
+        topicId = existingTopic.id;
+      } else {
+        // Topic doesn't exist, so create it using our new Hybrid Route
+        const { data } = await API.post('/content/topics', {
+          subjectId: targetSubjectId,
+          title: topicTitle
+        });
+        topicId = data.id;
+      }
+
+      if (!topicId) throw new Error("Failed to get Topic ID");
+
+      // 4. Save Cards Loop
+      const promises = cards.map(card => {
+        // Normalize Data: AI sometimes capitalizes keys (Front/Question), so we catch all variations
+        const validFront = card.front || card.question || card.Front || "No Question";
+        const validBack = card.back || card.answer || card.Back || "No Answer";
+
+        return API.post('/content/cards', {
+          topicId: topicId,
+          front: validFront,
+          back: validBack,
+          cardType: 'BASIC'
+        });
+      });
+
+      // Run all save requests in parallel for speed
+      await Promise.all(promises);
+
+      // 5. Success Feedback
+      toast.success(`Saved ${cards.length} cards to "${topicTitle}"`);
+      setIsAiModalOpen(false); // Close Modal
+      fetchData(); // Refresh Dashboard to show new numbers
+
+    } catch (error) {
+      console.error("Save Failed:", error);
+      toast.error("Failed to save cards. Check console.");
+    }
+  };
+
   // --- CALCULATE MASTERY DATA ---
   const totalMastered = subjects.reduce((acc, s) => acc + (s.masteredCount || 0), 0);
   const totalLearning = subjects.reduce((acc, s) => acc + (s.learningCount || 0), 0);
   const totalNew = subjects.reduce((acc, s) => acc + (s.newCount || 0), 0);
-  const totalCards = totalMastered + totalLearning + totalNew || 1; 
+  const totalCards = totalMastered + totalLearning + totalNew || 1;
 
   // Data for the Donut Chart
   const masteryData = [
-    { name: 'Mastered', value: totalMastered || 1, color: '#10b981' }, 
-    { name: 'Learning', value: totalLearning || 1, color: '#6366f1' }, 
-    { name: 'New', value: totalNew || 1, color: '#e5e7eb' }, 
+    { name: 'Mastered', value: totalMastered || 1, color: '#10b981' },
+    { name: 'Learning', value: totalLearning || 1, color: '#6366f1' },
+    { name: 'New', value: totalNew || 1, color: '#e5e7eb' },
   ];
 
   return (
@@ -119,10 +181,10 @@ function Dashboard() {
 
       {/* --- VISUALIZER OVERLAY --- */}
       {graphSubjectId && (
-         <SubjectVisualizer 
-            subjectId={graphSubjectId} 
-            onClose={() => setGraphSubjectId(null)} 
-         />
+        <SubjectVisualizer
+          subjectId={graphSubjectId}
+          onClose={() => setGraphSubjectId(null)}
+        />
       )}
 
       {/* Header Section */}
@@ -131,17 +193,17 @@ function Dashboard() {
           <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Dashboard</h1>
           <p className="text-gray-500 text-sm mt-1 dark:text-gray-400">Overview of your learning progress</p>
         </div>
-        
-        <div className="flex items-center gap-4">
-            {/* 🔥 STREAK BADGE */}
-            <div className={`flex items-center gap-2 px-4 py-2 rounded-full font-bold shadow-sm transition-all ${streak > 0 ? 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-gray-100 text-gray-400 dark:bg-gray-800'}`}>
-                <Flame size={20} className={streak > 0 ? "fill-orange-500 animate-pulse" : ""} />
-                <span>{streak} Day Streak</span>
-            </div>
 
-            <span className="hidden sm:block text-sm font-mono text-gray-400 bg-gray-100 dark:bg-gray-800 px-3 py-2 rounded-full">
+        <div className="flex items-center gap-4">
+          {/* 🔥 STREAK BADGE */}
+          <div className={`flex items-center gap-2 px-4 py-2 rounded-full font-bold shadow-sm transition-all ${streak > 0 ? 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-gray-100 text-gray-400 dark:bg-gray-800'}`}>
+            <Flame size={20} className={streak > 0 ? "fill-orange-500 animate-pulse" : ""} />
+            <span>{streak} Day Streak</span>
+          </div>
+
+          <span className="hidden sm:block text-sm font-mono text-gray-400 bg-gray-100 dark:bg-gray-800 px-3 py-2 rounded-full">
             {new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-            </span>
+          </span>
         </div>
       </div>
 
@@ -150,7 +212,7 @@ function Dashboard() {
 
         {/* 1. Analytics Chart: BRAIN MASTERY */}
         <Card className="xl:col-span-2 p-6 flex flex-col justify-between relative overflow-hidden">
-          
+
           {/* Header */}
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
@@ -165,7 +227,7 @@ function Dashboard() {
           </div>
 
           <div className="flex flex-col md:flex-row items-center h-full">
-            
+
             {/* DONUT CHART */}
             <div className="h-64 w-full md:w-1/2 relative">
               <ResponsiveContainer width="100%" height="100%">
@@ -182,17 +244,17 @@ function Dashboard() {
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
-                  <Tooltip 
-                      contentStyle={{ borderRadius: '12px', border: 'none', backgroundColor: '#1f2937', color: '#fff' }}
-                      itemStyle={{ color: '#fff' }}
+                  <Tooltip
+                    contentStyle={{ borderRadius: '12px', border: 'none', backgroundColor: '#1f2937', color: '#fff' }}
+                    itemStyle={{ color: '#fff' }}
                   />
                 </PieChart>
               </ResponsiveContainer>
-              
+
               {/* Center Text Overlay */}
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                 <span className="text-3xl font-bold text-gray-800 dark:text-white">
-                    {totalCards === 1 && totalMastered === 0 ? 0 : totalCards}
+                  {totalCards === 1 && totalMastered === 0 ? 0 : totalCards}
                 </span>
                 <span className="text-xs text-gray-400 uppercase tracking-wider">Total Cards</span>
               </div>
@@ -200,37 +262,37 @@ function Dashboard() {
 
             {/* LEGEND / DETAILS */}
             <div className="w-full md:w-1/2 pl-0 md:pl-8 mt-4 md:mt-0 space-y-4">
-              
+
               {/* Item 1: Mastered */}
               <div className="flex items-center justify-between p-3 rounded-xl bg-green-50 dark:bg-green-900/10 border border-green-100 dark:border-green-900/20">
                 <div className="flex items-center gap-3">
-                    <div className="w-3 h-3 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50"></div>
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Mastered</span>
+                  <div className="w-3 h-3 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50"></div>
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Mastered</span>
                 </div>
                 <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                    {Math.round((totalMastered / totalCards) * 100)}%
+                  {Math.round((totalMastered / totalCards) * 100)}%
                 </span>
               </div>
 
               {/* Item 2: Learning */}
               <div className="flex items-center justify-between p-3 rounded-xl bg-indigo-50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-900/20">
                 <div className="flex items-center gap-3">
-                    <div className="w-3 h-3 rounded-full bg-indigo-500 shadow-sm shadow-indigo-500/50"></div>
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Learning</span>
+                  <div className="w-3 h-3 rounded-full bg-indigo-500 shadow-sm shadow-indigo-500/50"></div>
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Learning</span>
                 </div>
                 <span className="font-bold text-indigo-600 dark:text-indigo-400">
-                      {Math.round((totalLearning / totalCards) * 100)}%
+                  {Math.round((totalLearning / totalCards) * 100)}%
                 </span>
               </div>
 
               {/* Item 3: New */}
               <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700">
                 <div className="flex items-center gap-3">
-                    <div className="w-3 h-3 rounded-full bg-gray-300 dark:bg-gray-600"></div>
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">New</span>
+                  <div className="w-3 h-3 rounded-full bg-gray-300 dark:bg-gray-600"></div>
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">New</span>
                 </div>
                 <span className="font-bold text-gray-500 dark:text-gray-400">
-                      {Math.round((totalNew / totalCards) * 100)}%
+                  {Math.round((totalNew / totalCards) * 100)}%
                 </span>
               </div>
 
@@ -257,13 +319,16 @@ function Dashboard() {
           </button>
 
           <div className="grid grid-cols-2 gap-4">
+
+            {/* 👇 AI GENERATE BUTTON */}
             <button
-              onClick={() => navigate('/add-card')}
-              className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-indigo-500 hover:shadow-sm transition-all text-center group"
+              onClick={() => setIsAiModalOpen(true)}
+              className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-purple-500 hover:shadow-sm transition-all text-center group"
             >
-              <Plus className="mx-auto mb-2 text-indigo-600 group-hover:scale-110 transition-transform" />
-              <span className="text-sm font-bold text-gray-700 dark:text-gray-200">Add Card</span>
+              <Sparkles className="mx-auto mb-2 text-purple-500 group-hover:scale-110 transition-transform" />
+              <span className="text-sm font-bold text-gray-700 dark:text-gray-200">AI Generate</span>
             </button>
+
             <button
               onClick={openCreateModal}
               className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-indigo-500 hover:shadow-sm transition-all text-center group"
@@ -272,21 +337,30 @@ function Dashboard() {
               <span className="text-sm font-bold text-gray-700 dark:text-gray-200">New Subject</span>
             </button>
           </div>
+
+          <button
+            onClick={() => navigate('/add-card')}
+            className="w-full bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-indigo-500 hover:shadow-sm transition-all text-center group"
+          >
+            <Plus className="mx-auto mb-2 text-indigo-600 group-hover:scale-110 transition-transform" />
+            <span className="text-sm font-bold text-gray-700 dark:text-gray-200">Add Card Manually</span>
+          </button>
+
         </div>
       </div>
-      
+
       {/* --- ROW 2: HABIT TRACKER (HEATMAP) --- */}
       <Card className="p-6 mb-8 border border-gray-200 dark:border-gray-800">
         <div className="flex items-center gap-2 mb-4">
-           <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg text-green-600 dark:text-green-400">
-                <Calendar size={20} />
-            </div>
-            <div>
-                <h2 className="text-lg font-bold text-gray-800 dark:text-white">Study Consistency</h2>
-                <p className="text-xs text-gray-500">Every green square is a step towards mastery</p>
-            </div>
+          <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg text-green-600 dark:text-green-400">
+            <Calendar size={20} />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold text-gray-800 dark:text-white">Study Consistency</h2>
+            <p className="text-xs text-gray-500">Every green square is a step towards mastery</p>
+          </div>
         </div>
-        
+
         {/* THE HEATMAP COMPONENT */}
         <ActivityHeatmap activityLog={heatmapData} />
       </Card>
@@ -316,20 +390,20 @@ function Dashboard() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  
+
                   {/* GRAPH BUTTON */}
-                  <button 
-                      onClick={() => setGraphSubjectId(sub.id)}
-                      className="p-1.5 text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition"
-                      title="Visualize Knowledge Space"
+                  <button
+                    onClick={() => setGraphSubjectId(sub.id)}
+                    className="p-1.5 text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition"
+                    title="Visualize Knowledge Space"
                   >
-                      <Network size={18} />
+                    <Network size={18} />
                   </button>
 
                   <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${sub.dueCount > 0 ? 'bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-300' : 'bg-green-50 text-green-600 dark:bg-green-900/30 dark:text-green-300'}`}>
                     {sub.dueCount > 0 ? `${sub.dueCount}` : 'Done'}
                   </span>
-                  
+
                   <SubjectMenu
                     onEdit={() => openRenameModal(sub.id, sub.title)}
                     onDelete={() => handleDelete(sub.id)}
@@ -364,7 +438,7 @@ function Dashboard() {
             </Card>
           ))}
 
-          
+
         </div>
       )}
 
@@ -375,6 +449,14 @@ function Dashboard() {
         onSubmit={handleSaveSubject}
         title={modalMode === 'create' ? "New Subject" : "Rename Subject"}
         placeholder={modalDefaultText || "e.g., Data Structures"}
+      />
+
+      {/* 👇 AI Generator Modal */}
+      <AICardGenerator
+        isOpen={isAiModalOpen}
+        onClose={() => setIsAiModalOpen(false)}
+        onSaveCards={handleSaveAiCards}
+        subjects={subjects}
       />
     </div>
   );

@@ -36,6 +36,9 @@ app.use("/api/content", contentRoutes);
 const studyRoutes = require("./routes/studyRoutes");
 app.use("/api/study", studyRoutes);
 
+const aiRoutes = require('./routes/aiRoutes');
+app.use('/api/ai', aiRoutes);
+
 // --- SYSTEM & DEBUG ROUTES ---
 app.get("/api/status", async (req, res) => {
   try {
@@ -100,6 +103,5 @@ sequelize.sync({ alter: true }).then(() => {
   initScheduler(); 
   app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
   
-  // Start Scheduler
   
 }).catch(err => console.log("❌ DB Error:", err));

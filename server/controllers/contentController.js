@@ -60,8 +60,13 @@ exports.updateSubject = async (req, res) => {
 
 exports.createTopic = async (req, res) => {
   try {
-    const { subjectId } = req.params;
+    // const { subjectId } = req.params;
+    const subjectId = req.params.subjectId || req.body.subjectId;
     const { title } = req.body;
+
+    if (!subjectId) {
+        return res.status(400).json({ error: "Subject ID is required" });
+    }
 
     const existingTopic = await Topic.findOne({
       where: {
@@ -122,6 +127,10 @@ exports.updateTopic = async (req, res) => {
 exports.createCard = async (req, res) => {
   try {
     const { topicId, front, back, cardType } = req.body;
+
+    if (!topicId || !front || !back) {
+      return res.status(400).json({ error: "Missing required fields (topicId, front, back)" });
+    }
     
     // Optional: Check if exact card already exists to prevent double-clicks
     const existingCard = await Card.findOne({
