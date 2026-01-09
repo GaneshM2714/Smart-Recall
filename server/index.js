@@ -93,7 +93,7 @@ app.get('/api/fix-db-avatar', async (req, res) => {
 
 // --- STARTUP ---
 // REMOVED { alter: true } to stop duplicate index errors
-sequelize.sync().then(() => {
+sequelize.sync({ alter: true }).then(() => {
   console.log("✅ Database Synced");
   
   // Start Server

@@ -35,17 +35,16 @@ const User = sequelize.define("User", {
   auth_provider: { type: DataTypes.STRING, defaultValue: 'email' },
   google_id: { type: DataTypes.STRING, allowNull: true },
 
-  // 🔥 GAMIFICATION FIELDS (New)
+  // 🔥 GAMIFICATION FIELDS (Confirmed Present)
   streak: { 
     type: DataTypes.INTEGER, 
     defaultValue: 0 
   },
   last_active_date: { 
-    type: DataTypes.DATEONLY, // Stores YYYY-MM-DD (No time, prevents timezone bugs)
+    type: DataTypes.DATEONLY, // Stores YYYY-MM-DD
     allowNull: true 
   },
   // Stores daily counts: { "2025-01-01": 5, "2025-01-02": 12 }
-  // This powers the GitHub-style Heatmap efficiently
   activity_log: { 
     type: DataTypes.JSON, 
     defaultValue: {} 
@@ -93,7 +92,6 @@ const Card = sequelize.define("Card", {
       fields: ['next_review']
     },
     // 2. Speeds up filtering cards by Topic (The Subject/Browser View)
-    // Note: 'topic_id' is added automatically by the relationship below, but we can still index it here.
     {
       name: 'cards_topic_id_idx',
       fields: ['topic_id']
