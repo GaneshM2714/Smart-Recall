@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import API from '../api';
-import { ArrowLeft, Search, Plus, Settings } from 'lucide-react'; // Added Settings icon
+import { ArrowLeft, Search, Plus, Settings } from 'lucide-react';
 import toast from 'react-hot-toast';
 import VirtualCardList from '../components/VirtualCardList'; 
-import EditCardModal from '../components/EditCardModal';      // <--- IMPORTED
-import TopicManagerModal from '../components/TopicManagerModal'; // <--- IMPORTED
+import EditCardModal from '../components/EditCardModal';
+import TopicManagerModal from '../components/TopicManagerModal';
 
 function SubjectView() {
   const { id } = useParams();
@@ -31,13 +31,46 @@ function SubjectView() {
     }
   };
 
-  const handleDeleteCard = async (cardId) => {
-    if(!confirm("Delete this card?")) return;
+  // 👇 NEW: Actual Delete Logic (Hidden from direct click)
+  const executeDelete = async (cardId) => {
     try {
       await API.delete(`/content/cards/${cardId}`);
       toast.success("Card deleted");
       fetchDetails();
-    } catch (err) { toast.error("Failed to delete"); }
+    } catch (err) { 
+      toast.error("Failed to delete card"); 
+    }
+  };
+
+  // 👇 UPDATED: Replaces 'confirm()' with a custom Toast UI
+  const handleDeleteCard = (cardId) => {
+    toast((t) => (
+      <div className="flex flex-col gap-2 min-w-[200px]">
+        <span className="font-semibold text-gray-800 dark:text-gray-200">
+          Delete this card?
+        </span>
+        <div className="flex gap-2">
+          <button 
+            onClick={() => {
+              executeDelete(cardId);
+              toast.dismiss(t.id);
+            }}
+            className="flex-1 bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-md text-sm font-medium transition"
+          >
+            Delete
+          </button>
+          <button 
+            onClick={() => toast.dismiss(t.id)}
+            className="flex-1 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 px-3 py-1.5 rounded-md text-sm font-medium transition"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    ), { 
+      duration: 5000, // Stay open a bit longer for decision
+      position: 'top-center'
+    });
   };
 
   // Callback when a card is updated in the modal
@@ -59,10 +92,10 @@ function SubjectView() {
     t.Cards.map(c => ({ ...c, topicName: t.title }))
   );
 
-  if (loading) return <div className="p-8 text-center">Loading Library...</div>;
+  if (loading) return <div className="p-8 text-center text-gray-500">Loading Library...</div>;
 
   return (
-    <div className="h-screen flex flex-col p-6 max-w-6xl mx-auto">
+    <div className="h-screen flex flex-col p-6 max-w-6xl mx-auto animate-fade-in">
       
       {/* Header */}
       <div className="flex items-center justify-between mb-6 shrink-0">
@@ -101,7 +134,7 @@ function SubjectView() {
         <input 
             type="text"
             placeholder="Search for a question or answer..."
-            className="w-full pl-10 p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-colors"
+            className="w-full pl-10 p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-colors text-gray-800 dark:text-gray-200"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
         />
@@ -112,11 +145,12 @@ function SubjectView() {
         {allCards.length > 0 ? (
            <VirtualCardList 
              cards={allCards} 
-             onDelete={handleDeleteCard}
-             onEdit={(card) => setEditingCard(card)} // <--- CONNECTED HERE
+             onDelete={handleDeleteCard} // Passes the toast handler
+             onEdit={(card) => setEditingCard(card)}
            />
         ) : (
-           <div className="flex flex-col items-center justify-center h-full text-gray-500">
+           <div className="flex flex-col items-center justify-center h-full text-gray-500 dark:text-gray-400">
+             <Search size={48} className="mb-4 opacity-20" />
              <p>No cards found.</p>
            </div>
         )}
@@ -136,10 +170,10 @@ function SubjectView() {
       {/* 2. Topic Manager Modal */}
       {showTopicManager && (
         <TopicManagerModal 
-            topics={topics} // Pass original unfiltered topics
+            topics={topics}
             onClose={() => setShowTopicManager(false)}
             onTopicDeleted={() => {
-                fetchDetails(); // Refresh list if a topic is deleted
+                fetchDetails(); 
             }}
         />
       )}

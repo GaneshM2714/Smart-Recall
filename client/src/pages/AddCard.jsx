@@ -5,7 +5,8 @@ import { ArrowLeft, Plus, Save, Layers, Eye, Edit2 } from 'lucide-react';
 import Card from '../components/ui/Card';
 import toast from 'react-hot-toast';
 import RichText from '../components/RichText';
-import MarkdownToolbar from '../components/MarkdownToolbar'; // <--- IMPORT THIS
+import MarkdownToolbar from '../components/MarkdownToolbar';
+import InputModal from '../components/InputModal'; // 👈 IMPORT THIS
 
 function AddCard() {
   const navigate = useNavigate();
@@ -21,6 +22,9 @@ function AddCard() {
   // Toggle for Preview Mode
   const [isPreview, setIsPreview] = useState(false);
 
+  // 👇 NEW: Modal State
+  const [isTopicModalOpen, setIsTopicModalOpen] = useState(false);
+
   useEffect(() => { fetchStructure(); }, []);
 
   const fetchStructure = async () => {
@@ -33,18 +37,28 @@ function AddCard() {
     } catch (error) { console.error("Failed to load subjects"); }
   };
 
-  const handleCreateTopic = async () => {
+  // 👇 UPDATED: Just opens the modal now
+  const handleCreateTopicClick = () => {
     if (!selectedSubject) return toast.error("Please select a Subject first.");
-    const title = prompt("Enter new Topic name:"); 
-    if (!title) return;
-    try {
-      await API.post(`/content/topics/${selectedSubject}`, { title });
-      await fetchStructure();
-      toast.success("Topic Created!");
-    } catch (error) { toast.error("Failed to create topic."); }
+    setIsTopicModalOpen(true);
   };
 
-  const handleSave = async (e) => {
+  // 👇 NEW: Handles the actual API call from the Modal
+  const handleSaveTopic = async (title) => {
+    if (!title) return;
+    try {
+      // Matches your route: router.post("/topics/:subjectId", ...)
+      await API.post(`/content/topics/${selectedSubject}`, { title });
+      await fetchStructure(); // Refresh lists
+      toast.success("Topic Created!");
+      setIsTopicModalOpen(false); // Close modal
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to create topic.");
+    }
+  };
+
+  const handleSaveCard = async (e) => {
     e.preventDefault();
     if (!selectedTopic || !front.trim() || !back.trim()) {
       toast.error("Please fill in all fields");
@@ -119,7 +133,7 @@ function AddCard() {
 
               <button 
                 type="button"
-                onClick={handleCreateTopic}
+                onClick={handleCreateTopicClick} // 👈 Use new handler
                 disabled={!selectedSubject}
                 className="bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 p-2.5 rounded-lg border border-gray-300 dark:border-gray-600 disabled:opacity-50 transition-colors"
                 title="Create New Topic"
@@ -130,7 +144,7 @@ function AddCard() {
           </div>
         </div>
 
-        <form onSubmit={handleSave} className="space-y-6">
+        <form onSubmit={handleSaveCard} className="space-y-6">
           
           {/* Tabs for Write / Preview */}
           <div className="flex justify-end gap-2">
@@ -153,7 +167,7 @@ function AddCard() {
           {/* FRONT */}
           <div>
              <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2 uppercase tracking-wider">
-                Front (Question)
+               Front (Question)
              </label>
              {isPreview ? (
                 <div className="w-full p-4 border border-gray-200 dark:border-gray-600 rounded-lg min-h-[100px] bg-gray-50 dark:bg-gray-800/50 text-gray-900 dark:text-gray-100">
@@ -161,9 +175,7 @@ function AddCard() {
                 </div>
              ) : (
                 <div className="border border-gray-300 dark:border-gray-600 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500 transition-shadow">
-                    {/* Toolbar */}
                     <MarkdownToolbar textAreaId="frontInput" onInsert={setFront} />
-                    
                     <textarea
                         id="frontInput"
                         className="w-full p-4 h-32 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none resize-none transition-colors font-mono text-sm"
@@ -178,7 +190,7 @@ function AddCard() {
           {/* BACK */}
           <div>
             <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2 uppercase tracking-wider">
-                Back (Answer)
+               Back (Answer)
             </label>
             {isPreview ? (
                 <div className="w-full p-4 border border-gray-200 dark:border-gray-600 rounded-lg min-h-[120px] bg-gray-50 dark:bg-gray-800/50 text-gray-900 dark:text-gray-100">
@@ -186,9 +198,7 @@ function AddCard() {
                 </div>
              ) : (
                 <div className="border border-gray-300 dark:border-gray-600 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500 transition-shadow">
-                    {/* Toolbar */}
                     <MarkdownToolbar textAreaId="backInput" onInsert={setBack} />
-                    
                     <textarea
                         id="backInput"
                         className="w-full p-4 h-40 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none resize-none transition-colors font-mono text-sm"
@@ -214,6 +224,15 @@ function AddCard() {
           </div>
         </form>
       </Card>
+
+      {/* 👇 NEW: Modal Implementation */}
+      <InputModal
+        isOpen={isTopicModalOpen}
+        onClose={() => setIsTopicModalOpen(false)}
+        onSubmit={handleSaveTopic}
+        title="Create New Topic"
+        placeholder="e.g. React State Management"
+      />
     </div>
   );
 }

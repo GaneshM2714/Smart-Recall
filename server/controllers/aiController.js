@@ -5,26 +5,31 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 exports.generateCards = async (req, res) => {
   try {
-    const { topic, amount = 5, difficulty = 'Intermediate' } = req.body;
+    // 👇 Accept 'subject' from the frontend
+    const { topic, subject, amount = 5, difficulty = 'Intermediate' } = req.body;
 
     if (!topic) return res.status(400).json({ error: "Topic is required" });
 
+    // Use gemini-1.5-flash (Standard model for speed)
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
     const prompt = `
       You are an expert teacher creating flashcards for a student.
       
-      User Input/Prompt: "${topic}"
+      Main Subject: "${subject || 'General Knowledge'}"
+      Specific Topic/Focus: "${topic}"
       Task: Create ${amount} flashcards.
       Difficulty Level: ${difficulty}
       
       Requirements:
-      1. Analyze the User Input and extract a clean, concise "Subject Topic" (max 3-5 words).
-         - Example: If input is "how do react hooks work", Topic should be "React Hooks".
-      2. "front" should be a clear, concise question.
-      3. "back" should be the direct answer (max 2 sentences).
-      4. OUTPUT MUST BE A SINGLE VALID JSON OBJECT. 
-      5. Do not include markdown formatting like \`\`\`json.
+      1. **Context is Key**: All questions MUST relate strictly to "${subject}". 
+         - Example: If Subject is "Quantum Physics" and Topic is "Definition", generate cards defining Quantum Physics terms (e.g. "What is superposition?"), NOT generic dictionary definitions.
+      2. Analyze the input and extract a clean "Subject Topic" (max 3-5 words).
+         - If the Topic is generic (e.g. "Basics", "Definition"), combine it with the Subject (e.g. "Quantum Physics Basics").
+      3. "front" should be a clear, concise question.
+      4. "back" should be the direct answer (max 2 sentences).
+      5. OUTPUT MUST BE A SINGLE VALID JSON OBJECT. 
+      6. Do not include markdown formatting like \`\`\`json.
 
       Expected JSON Structure:
       {
@@ -40,16 +45,11 @@ exports.generateCards = async (req, res) => {
     const response = await result.response;
     const text = response.text();
 
-    // Cleanup: Remove markdown if Gemini adds it
     const cleanedText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-    
-    // Parse JSON
     const parsedData = JSON.parse(cleanedText);
 
-    // 👇 Return both the Cards and the AI-generated Topic Name
-    // Handle cases where Gemini might return just the array (fallback)
     const finalCards = Array.isArray(parsedData) ? parsedData : parsedData.cards;
-    const finalTopic = parsedData.topic || topic; // Fallback to user input if no topic returned
+    const finalTopic = parsedData.topic || topic; 
 
     res.json({ 
         cards: finalCards, 

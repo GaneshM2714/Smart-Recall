@@ -19,13 +19,15 @@ const AICardGenerator = ({ isOpen, onClose, onSaveCards, subjects = [] }) => {
 
   const handleGenerate = async () => {
     if (!topic) return toast.error("Please enter a topic");
+    const selectedSubject = subjects.find(s => s.id == selectedSubjectId);
+    const subjectName = selectedSubject ? selectedSubject.title : "";
 
     setLoading(true);
     setGeneratedCards([]);
 
     try {
       // Call Backend
-      const { data } = await API.post('/ai/generate', { topic, amount });
+      const { data } = await API.post('/ai/generate', { topic, amount, subject: subjectName });
       
       // Update cards
       setGeneratedCards(data.cards);
@@ -139,7 +141,7 @@ const AICardGenerator = ({ isOpen, onClose, onSaveCards, subjects = [] }) => {
         {generatedCards.length > 0 && (
           <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
             <button
-              onClick={handleTriggerSave} // 👈 Calls the simplified handler
+              onClick={handleTriggerSave} 
               className="w-full py-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl transition flex items-center justify-center gap-2"
             >
               <Check size={20} /> Save to {subjects.find(s => s.id == selectedSubjectId)?.title || 'Subject'}
