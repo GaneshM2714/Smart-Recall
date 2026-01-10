@@ -13,13 +13,13 @@ app.use(express.json());
 app.use(cors());
 app.use(compression());
 
-// 2. LATENCY DEBUGGER (Add this to see where the 500ms is coming from)
-// This prints: "⏱️ GET /api/me [Backend Processing]: 23ms"
+// 2. LATENCY DEBUGGER
 app.use((req, res, next) => {
   const start = Date.now();
   res.on('finish', () => {
     const duration = Date.now() - start;
-    if (req.originalUrl.startsWith('/api')) {
+    // Log only if not in test mode to keep test output clean
+    if (req.originalUrl.startsWith('/api') && process.env.NODE_ENV !== 'test') {
         console.log(`⏱️ ${req.method} ${req.originalUrl} [Backend]: ${duration}ms`);
     }
   });
@@ -52,10 +52,9 @@ app.get("/api/status", async (req, res) => {
 app.get('/api/health', async (req, res) => {
   try {
     await sequelize.authenticate();
-    // Keep health checks quiet in logs unless error
     res.status(200).send('OK - DB Active');
   } catch (error) {
-    console.error('❌ Health Check Failed:', error.message);
+    if (process.env.NODE_ENV !== 'test') console.error('❌ Health Check Failed:', error.message);
     res.status(500).send('Database Error');
   }
 });
@@ -84,7 +83,7 @@ app.get('/api/debug-public', async (req, res) => {
   }
 });
 
-// --- TEMPORARY FIX ROUTE (Delete this after running once) ---
+// --- TEMPORARY FIX ROUTE ---
 app.get('/api/fix-db-avatar', async (req, res) => {
   try {
     await sequelize.query("ALTER TABLE Users ADD COLUMN avatar VARCHAR(255) NULL;");
@@ -94,14 +93,16 @@ app.get('/api/fix-db-avatar', async (req, res) => {
   }
 });
 
-// --- STARTUP ---
-// REMOVED { alter: true } to stop duplicate index errors
-sequelize.sync({ alter: true }).then(() => {
-  console.log("✅ Database Synced");
-  
-  // Start Server
-  initScheduler(); 
-  app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
-  
-  
-}).catch(err => console.log("❌ DB Error:", err));
+// --- STARTUP LOGIC ---
+
+// Only start the real server if we are NOT testing
+if (process.env.NODE_ENV !== 'test') {
+    sequelize.sync({ alter: true }).then(() => {
+        console.log("✅ Database Synced");
+        initScheduler(); 
+        app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+    }).catch(err => console.log("❌ DB Error:", err));
+}
+
+// Export the app for testing
+module.exports = app;
