@@ -21,7 +21,8 @@ test('Full User Journey: Signup -> Create Subject -> Add Card', async ({ page })
   await page.locator('input[type="password"]').fill('password123');
   
   // Click the "Create Account" submit button
-  await page.getByRole('button', { name: /sign up|register|create account/i }).click();
+  // FIXED: Removed "sign up" from regex to avoid matching the Google button
+  await page.getByRole('button', { name: /^Create Account$/i }).click();
 
   // Verify Dashboard Load
   // Wait for URL to switch to /dashboard
