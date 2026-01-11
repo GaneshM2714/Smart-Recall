@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import API from '../api';
-import { Sparkles, Loader, Check, X, BookOpen } from 'lucide-react';
+import { Sparkles, Loader, Check, X, BookOpen, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const AICardGenerator = ({ isOpen, onClose, onSaveCards, subjects = [] }) => {
@@ -8,48 +8,93 @@ const AICardGenerator = ({ isOpen, onClose, onSaveCards, subjects = [] }) => {
   const [amount, setAmount] = useState(5);
   const [selectedSubjectId, setSelectedSubjectId] = useState('');
   const [loading, setLoading] = useState(false);
+  const [statusText, setStatusText] = useState(""); 
   const [generatedCards, setGeneratedCards] = useState([]);
 
-  // Reset state when opening
+  // Reset selection when opening
   useEffect(() => {
     if (isOpen && subjects.length > 0 && !selectedSubjectId) {
       setSelectedSubjectId(subjects[0].id);
     }
+    // Clear state when reopening
+    if (isOpen) {
+      setGeneratedCards([]);
+      setStatusText("");
+    }
   }, [isOpen, subjects]);
+
+  // Helper: Poll the backend for job status
+  const pollJobStatus = async (jobId) => {
+    return new Promise((resolve, reject) => {
+      const interval = setInterval(async () => {
+        try {
+          const { data } = await API.get(`/ai/status/${jobId}`);
+          
+          if (data.state === 'completed') {
+            clearInterval(interval);
+            resolve(data.result); // Returns { cards: [...], topic: "..." }
+          } else if (data.state === 'failed') {
+            clearInterval(interval);
+            reject(new Error("AI Generation Failed"));
+          } else {
+            // Still running
+            setStatusText("AI is thinking... (This takes ~10s)");
+          }
+        } catch (error) {
+          clearInterval(interval);
+          reject(error);
+        }
+      }, 2000); // Check every 2 seconds
+    });
+  };
 
   const handleGenerate = async () => {
     if (!topic) return toast.error("Please enter a topic");
-    const selectedSubject = subjects.find(s => s.id == selectedSubjectId);
-    const subjectName = selectedSubject ? selectedSubject.title : "";
-
+    
     setLoading(true);
     setGeneratedCards([]);
+    setStatusText("Queueing job...");
 
     try {
-      // Call Backend
-      const { data } = await API.post('/ai/generate', { topic, amount, subject: subjectName });
+      // 1. Fire: Start the background job
+      const { data: startData } = await API.post('/ai/generate', { 
+        topic, 
+        amount, 
+        subjectId: selectedSubjectId 
+      });
+
+      setStatusText("Job Queued! Waiting for worker...");
+
+      // 2. Poll: Wait for result
+      const result = await pollJobStatus(startData.jobId);
+
+      // 3. Preview: Show cards (do not save yet)
+      setGeneratedCards(result.cards);
+      setTopic(result.topic); // Update topic to the "clean" one from AI
       
-      // Update cards
-      setGeneratedCards(data.cards);
-      
-      if (data.topic) {
-          setTopic(data.topic);
-      }
-      
-      toast.success("Cards Generated! Review them below.");
+      toast.success("Cards Ready! Review them below.");
+
     } catch (error) {
-      toast.error("AI Generation Failed");
+      toast.error(error.message || "Generation Failed");
       console.error(error);
+    } finally {
+      setLoading(false);
+      setStatusText("");
     }
-    setLoading(false);
   };
 
   const handleTriggerSave = () => {
     if (!selectedSubjectId) return toast.error("Please select a Subject to save to!");
-    if (!topic) return toast.error("Topic is missing!");
+    if (generatedCards.length === 0) return toast.error("No cards to save!");
     
+    // Call the parent function to save these cards to the DB
     onSaveCards(selectedSubjectId, topic, generatedCards);
     onClose();
+  };
+
+  // Helper to remove a specific card from the preview
+  const removeCard = (indexToRemove) => {
+    setGeneratedCards(cards => cards.filter((_, idx) => idx !== indexToRemove));
   };
 
   if (!isOpen) return null;
@@ -114,37 +159,58 @@ const AICardGenerator = ({ isOpen, onClose, onSaveCards, subjects = [] }) => {
                 <option value={10}>10 Cards</option>
               </select>
             </div>
+            
             <button
               onClick={handleGenerate}
               disabled={loading}
               className="flex-1 mt-6 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-xl hover:opacity-90 transition disabled:opacity-50 flex items-center justify-center gap-2"
             >
-              {loading ? <Loader className="animate-spin" size={18} /> : <><Sparkles size={18} /> Generate</>}
+              {loading ? (
+                <>
+                  <Loader className="animate-spin" size={18} /> 
+                  <span className="text-sm ml-1 truncate max-w-[100px]">{statusText}</span>
+                </>
+              ) : (
+                <><Sparkles size={18} /> Generate</>
+              )}
             </button>
           </div>
         </div>
 
         {/* Preview Area */}
         {generatedCards.length > 0 && (
-          <div className="flex-1 overflow-y-auto px-6 pb-6 space-y-3 custom-scrollbar">
-            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Preview ({generatedCards.length})</h3>
+          <div className="flex-1 overflow-y-auto px-6 pb-6 space-y-3 custom-scrollbar border-t border-gray-100 dark:border-gray-700 pt-4">
+            <div className="flex justify-between items-center mb-2">
+                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Preview ({generatedCards.length})</h3>
+                <span className="text-xs text-gray-400 italic">Review before saving</span>
+            </div>
+            
             {generatedCards.map((card, i) => (
-              <div key={i} className="p-3 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm">
-                <div className="font-bold text-gray-700 dark:text-gray-300 mb-1">Q: {card.front}</div>
+              <div key={i} className="group relative p-3 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm hover:border-indigo-300 dark:hover:border-indigo-700 transition">
+                <div className="font-bold text-gray-700 dark:text-gray-300 mb-1 pr-6">Q: {card.front}</div>
                 <div className="text-gray-500 dark:text-gray-400">A: {card.back}</div>
+                
+                {/* Delete Button (Hover Only) */}
+                <button 
+                    onClick={() => removeCard(i)}
+                    className="absolute top-2 right-2 p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition opacity-0 group-hover:opacity-100"
+                    title="Remove this card"
+                >
+                    <Trash2 size={16} />
+                </button>
               </div>
             ))}
           </div>
         )}
 
-        {/* Footer */}
+        {/* Footer (Save Button) */}
         {generatedCards.length > 0 && (
           <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
             <button
               onClick={handleTriggerSave} 
-              className="w-full py-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl transition flex items-center justify-center gap-2"
+              className="w-full py-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-green-500/20"
             >
-              <Check size={20} /> Save to {subjects.find(s => s.id == selectedSubjectId)?.title || 'Subject'}
+              <Check size={20} /> Save {generatedCards.length} Cards to {subjects.find(s => s.id == selectedSubjectId)?.title || 'Subject'}
             </button>
           </div>
         )}

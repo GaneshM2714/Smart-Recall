@@ -4,6 +4,8 @@ const { sequelize } = require("./models");
 require("dotenv").config();
 const compression = require('compression'); 
 const { initScheduler } = require('./services/reminderService');
+require('./services/aiQueue');
+
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -20,7 +22,7 @@ app.use((req, res, next) => {
     const duration = Date.now() - start;
     // Log only if not in test mode to keep test output clean
     if (req.originalUrl.startsWith('/api') && process.env.NODE_ENV !== 'test') {
-        console.log(`⏱️ ${req.method} ${req.originalUrl} [Backend]: ${duration}ms`);
+        console.log(` ${req.method} ${req.originalUrl} [Backend]: ${duration}ms`);
     }
   });
   next();

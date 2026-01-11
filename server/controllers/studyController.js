@@ -1,14 +1,26 @@
-// server/controllers/studyController.js
-const { Card, ReviewLog, Topic, Subject, User, sequelize } = require("../models"); // 👈 Added User import
+const { Card, ReviewLog, Topic, Subject, User, sequelize } = require("../models");
 const { calculateFSRS, applyRippleBoost } = require("../utils/algorithm");
 const { Op } = require("sequelize");
+const redis = require('../config/redis');
 
-// 1. GET QUEUE (No changes needed)
 exports.getStudyQueue = async (req, res) => {
   try {
-    const subjectId = req.query.subjectId || req.params.subjectId; 
-    const subjectFilter = { user_id: req.user.id };
-    if (subjectId) subjectFilter.id = subjectId; 
+    const userId = req.user.id;
+    const subjectId = req.query.subjectId || req.params.subjectId;
+    
+    const cacheKey = subjectId 
+      ? `queue:${userId}:${subjectId}` 
+      : `queue:${userId}:global`;
+
+    const cachedData = await redis.get(cacheKey);
+    if (cachedData) {
+      console.log("serving from redis")
+      return res.json(JSON.parse(cachedData));
+    }
+    else console.log("Miss");
+
+    const subjectFilter = { user_id: userId };
+    if (subjectId) subjectFilter.id = subjectId;
 
     const cards = await Card.findAll({
       where: {
@@ -25,74 +37,66 @@ exports.getStudyQueue = async (req, res) => {
         include: [{
           model: Subject,
           required: true,
-          where: subjectFilter 
+          where: subjectFilter
         }]
       }]
     });
+
+    if (cards.length > 0) {
+      await redis.set(cacheKey, JSON.stringify(cards), 'EX', 300);
+    }
+
     res.json(cards);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
 
-// 2. SUBMIT REVIEW (Updated for Gamification 🔥)
 exports.submitReview = async (req, res) => {
   const { cardId, rating, durationMs } = req.body;
-  const userId = req.user.id; // From Auth Middleware
+  const userId = req.user.id;
   
   const t = await sequelize.transaction();
 
   try {
-    // A. Fetch Card
     const card = await Card.findByPk(cardId, { transaction: t });
     if (!card) throw new Error("Card not found");
 
-    // B. FSRS Algorithm
     const updates = calculateFSRS(card.toJSON(), rating);
     await card.update(updates, { transaction: t });
 
-    // C. Log Review
     await ReviewLog.create({
       card_id: cardId,
       rating,
       duration_ms: durationMs || 0
     }, { transaction: t });
 
-    // --- D. UPDATE USER STREAK & HEATMAP (New Logic) ---
     const user = await User.findByPk(userId, { transaction: t });
-    const today = new Date().toISOString().split('T')[0]; // "2025-01-09"
-    const lastActive = user.last_active_date; // "2025-01-08"
+    const today = new Date().toISOString().split('T')[0];
+    const lastActive = user.last_active_date;
 
     let newStreak = user.streak;
-    const newActivityLog = { ...user.activity_log }; // Clone existing JSON
+    const newActivityLog = { ...user.activity_log };
 
-    // 1. Update Heatmap Count
     if (newActivityLog[today]) {
         newActivityLog[today] += 1;
     } else {
         newActivityLog[today] = 1;
     }
 
-    // 2. Calculate Streak
     if (lastActive !== today) {
         if (lastActive) {
-            // Calculate difference in days
             const diffTime = new Date(today) - new Date(lastActive);
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-
             if (diffDays === 1) {
-                // Studied yesterday? Increment!
                 newStreak += 1;
             } else {
-                // Missed a day? Reset to 1 (Today is day 1)
                 newStreak = 1;
             }
         } else {
-            // First time ever
             newStreak = 1;
         }
     }
-    // If lastActive === today, do nothing to streak (already counted for today)
 
     await user.update({
         streak: newStreak,
@@ -100,7 +104,6 @@ exports.submitReview = async (req, res) => {
         activity_log: newActivityLog
     }, { transaction: t });
 
-    // --- E. RIPPLE BOOST (Existing Logic) ---
     if (rating === 'EASY') {
        const siblings = await Card.findAll({
            where: {
@@ -124,7 +127,11 @@ exports.submitReview = async (req, res) => {
 
     await t.commit();
     
-    // Return streak info so frontend can animate it!
+    await redis.del(`queue:${userId}:global`);
+    if (card.Topic && card.Topic.subject_id) {
+        await redis.del(`queue:${userId}:${card.Topic.subject_id}`);
+    }
+
     res.json({ 
         message: "Review Saved", 
         updates, 
@@ -138,52 +145,46 @@ exports.submitReview = async (req, res) => {
   }
 };
 
-// 3. GET ANALYTICS (Updated to return Heatmap Data)
 exports.getAnalytics = async (req, res) => {
-  try {
-    // 1. Fetch standard chart data (Last 7 days)
-    const [results] = await sequelize.query(`
-      SELECT 
-        DATE(reviewed_at) as date, 
-        COUNT(*) as count 
-      FROM ReviewLogs 
-      WHERE card_id IN (
-        SELECT id FROM Cards WHERE topic_id IN (
-          SELECT id FROM Topics WHERE subject_id IN (
-             SELECT id FROM Subjects WHERE user_id = '${req.user.id}'
+    try {
+        const [results] = await sequelize.query(`
+          SELECT 
+            DATE(reviewed_at) as date, 
+            COUNT(*) as count 
+          FROM ReviewLogs 
+          WHERE card_id IN (
+            SELECT id FROM Cards WHERE topic_id IN (
+              SELECT id FROM Topics WHERE subject_id IN (
+                 SELECT id FROM Subjects WHERE user_id = '${req.user.id}'
+              )
+            )
           )
-        )
-      )
-      GROUP BY DATE(reviewed_at)
-      ORDER BY date ASC
-      LIMIT 7
-    `);
+          GROUP BY DATE(reviewed_at)
+          ORDER BY date ASC
+          LIMIT 7
+        `);
+        
+        const chartData = results.map(row => ({
+          date: new Date(row.date).toLocaleDateString(undefined, { weekday: 'short' }),
+          reviews: row.count
+        }));
     
-    const chartData = results.map(row => ({
-      date: new Date(row.date).toLocaleDateString(undefined, { weekday: 'short' }),
-      reviews: row.count
-    }));
-
-    // 2. Fetch User Gamification Data
-    const user = await User.findByPk(req.user.id, {
-        attributes: ['streak', 'activity_log']
-    });
-
-    res.json({
-        chartData, // Existing Bar Chart
-        streak: user.streak || 0,
-        heatmap: user.activity_log || {} // Full JSON history for Calendar Heatmap
-    });
-
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+        const user = await User.findByPk(req.user.id, {
+            attributes: ['streak', 'activity_log']
+        });
+    
+        res.json({
+            chartData, 
+            streak: user.streak || 0,
+            heatmap: user.activity_log || {} 
+        });
+    
+      } catch (error) {
+        res.status(500).json({ error: error.message });
+      }
 };
 
-// ... (Keep existing getGlobalCramQueue, getCramQueue, getKnowledgeGraph, getSubjectGraph exactly as they are)
-// 4. RANDOM MIX
 exports.getGlobalCramQueue = async (req, res) => {
-    // ... paste existing code
     try {
         const cards = await Card.findAll({
           include: [{
@@ -207,9 +208,7 @@ exports.getGlobalCramQueue = async (req, res) => {
       }
 };
 
-// 5. SUBJECT CRAM
 exports.getCramQueue = async (req, res) => {
-    // ... paste existing code
     try {
         const { subjectId } = req.params;
         const cards = await Card.findAll({
@@ -235,9 +234,7 @@ exports.getCramQueue = async (req, res) => {
       }
 };
 
-// 6. GRAPH
 exports.getKnowledgeGraph = async (req, res) => {
-    // ... paste existing code
     try {
         const userId = req.user.id;
         const subjects = await Subject.findAll({
@@ -290,14 +287,11 @@ exports.getKnowledgeGraph = async (req, res) => {
         });
         res.json({ nodes, links });
       } catch (error) {
-        console.error("Graph Error:", error);
         res.status(500).json({ error: error.message });
       }
 };
 
-// 7. SUBJECT GRAPH
 exports.getSubjectGraph = async (req, res) => {
-    // ... paste existing code
     try {
         const { subjectId } = req.params;
         const subject = await Subject.findOne({

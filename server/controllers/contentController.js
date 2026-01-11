@@ -1,6 +1,7 @@
 const { Subject, Topic, Card } = require("../models");
 const { sequelize } = require("../models");
 const { Op } = require("sequelize");
+const { aiQueue } = require('../services/aiQueue');
 
 /* =========================================
    1. SUBJECTS (Scope: Unique per User)
@@ -326,3 +327,4 @@ exports.deleteCard = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+

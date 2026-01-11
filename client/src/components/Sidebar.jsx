@@ -43,7 +43,7 @@ function Sidebar({ isCollapsed, toggleSidebar }) {
         </div>
         {!isCollapsed && (
           <span className="font-bold text-xl text-gray-800 dark:text-white whitespace-nowrap overflow-hidden animate-fade-in">
-            Smart Recall
+            Memory-Forged
           </span>
         )}
       </div>
