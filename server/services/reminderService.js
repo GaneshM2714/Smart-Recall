@@ -4,17 +4,21 @@ const { sequelize } = require('../models');
 require('dotenv').config(); // Ensure env vars are loaded
 
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  service: 'smtp.gmail.com',
+  port: 465,
+  secure: true, // Use SSL
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS
-  }
+  },
+  connectionTimeout: 10000, // 10 seconds
+  greetingTimeout: 10000,
+  socketTimeout: 10000
 });
 
 const sendReminders = async () => {
   console.log('⏰ Running Daily Reminder Job...');
   
-  // 👇 Get Client URL from .env (Default to localhost if missing)
   const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
 
   try {
@@ -33,11 +37,11 @@ const sendReminders = async () => {
     });
 
     if (results.length === 0) {
-      console.log('✅ No users have due cards today.');
+      console.log('No users have due cards today.');
       return;
     }
 
-    console.log(`📧 Sending reminders to ${results.length} users.`);
+    console.log(`Sending reminders to ${results.length} users.`);
 
     for (const user of results) {
       const { email, due_count } = user;
